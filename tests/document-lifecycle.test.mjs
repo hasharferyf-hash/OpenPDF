@@ -58,7 +58,7 @@ async function viewer() {
     },
     "pdfjs-dist/build/pdf.worker.min.mjs?url": { default: "worker.mjs" },
     "pdfjs-dist/web/pdf_viewer.css": {},
-  }, { document: { baseURI: "http://localhost/" }, ResizeObserver: class { observe() {} } });
+  }, { document: { baseURI: "http://localhost/" }, ResizeObserver: class { observe() {} disconnect() {} } });
   const controller = new module.ViewerController({}, {});
   return { controller, tasks, module, get started() { return started; } };
 }
@@ -171,4 +171,36 @@ test("file operations exclude overlapping opens/saves before the first await and
   await assert.rejects(operations.run(async () => { throw new Error("save failed"); }));
   await operations.run(async () => { secondRan = true; });
   assert.equal(secondRan, true);
+});
+
+test("switching inactive suspends a tab's editor shortcuts without closing its document", async () => {
+  const fixture = await viewer();
+  const doc = document();
+  await open(fixture, doc);
+  const calls = [];
+  fixture.controller.eventBus.dispatch("annotationeditoruimanager", {
+    uiManager: {
+      removeEditListeners() { calls.push("suspend"); },
+      addEditListeners() { calls.push("resume"); },
+      commitOrRemove() { calls.push("commit"); },
+    },
+  });
+  doc.annotationStorage.change("unsaved tab edit");
+  fixture.controller.setActive(false);
+  fixture.controller.setActive(true);
+  assert.deepEqual(calls, ["commit", "suspend", "resume"]);
+  assert.equal(fixture.controller.document, doc);
+  assert.equal(fixture.controller.hasUnsavedChanges(), true);
+});
+
+test("destroying a tab releases its worker exactly once and prevents it reopening", async () => {
+  const fixture = await viewer();
+  const current = task(Promise.resolve(document()));
+  fixture.tasks.push(current);
+  await fixture.controller.open(new Uint8Array(), async () => null);
+  await fixture.controller.destroy();
+  await fixture.controller.destroy();
+  assert.equal(current.destroyed, 1);
+  assert.equal(fixture.controller.document, null);
+  await assert.rejects(fixture.controller.open(new Uint8Array(), async () => null), fixture.module.OpenCancelled);
 });

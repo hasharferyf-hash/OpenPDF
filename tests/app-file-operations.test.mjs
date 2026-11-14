@@ -3,134 +3,169 @@ import test from "node:test";
 import { loadModule } from "./load-module.mjs";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
-const openedFile = { name: "new.pdf", path: "C:\\new.pdf", data: new Uint8Array([1]) };
+const pdf = (name) => ({ name, data: new Uint8Array([1]) });
 
-async function app({ picker = async () => openedFile, presenting = false } = {}) {
-  const hooks = [];
-  const effects = [];
-  const calls = [];
-  let cursor = 0;
-  let tree;
-  const element = (type, props) => ({ type, props });
-  const useRef = (initial) => {
-    const index = cursor++;
-    hooks[index] ??= { current: initial };
-    return hooks[index];
-  };
+async function app(picker = async () => [pdf("one.pdf")]) {
+  const hooks = [], effects = [], calls = [], handles = new Map(), events = new Map();
+  const { FileOperations } = await loadModule("src/services/files/operations.ts");
+  const { DocumentTabs } = await loadModule("src/services/tabs.ts");
+  let cursor = 0, tree, subscribed = false, scheduled = false;
   const useState = (initial) => {
     const index = cursor++;
     if (!(index in hooks)) hooks[index] = typeof initial === "function" ? initial() : initial;
     return [hooks[index], (value) => { hooks[index] = typeof value === "function" ? value(hooks[index]) : value; }];
   };
-  const state = { hasDocument: true, presenting, pageCount: 1, tool: "none" };
-  const controller = {
-    document: {}, dirty: false,
-    getState: () => state, getFindState: () => ({}), subscribe: () => () => {},
-    hasUnsavedChanges() { return this.dirty; },
-    setPresenting(value) { calls.push(["presenting", value]); state.presenting = value; },
-    async open() { calls.push(["open"]); state.presenting = false; },
-    focus() {},
-    async prepareSave() { return { data: new Uint8Array([1]) }; },
-    markSaved() { calls.push(["saved"]); },
+  const useRef = (initial) => {
+    const index = cursor++;
+    hooks[index] ??= { current: initial };
+    return hooks[index];
   };
-  const { FileOperations } = await loadModule("src/services/files/operations.ts");
-  const components = Object.fromEntries(["Toolbar", "EditorBar", "FindBar", "Sidebar", "Icon", "ConfirmDialog", "MessageDialog", "PasswordDialog", "ProgressDialog", "PropertiesDialog"].map((name) => [name, name]));
-  const module = await loadModule("src/App.tsx", {
-    react: {
-      useState, useRef,
-      useEffect: (effect) => { effects.push(effect); },
-      useMemo: (fn) => fn(), useCallback: (fn) => fn,
-      useSyncExternalStore: (_, snapshot) => snapshot(),
-    },
-    "react/jsx-runtime": { jsx: element, jsxs: element },
-    "./components/Dialogs": Object.fromEntries(Object.entries(components).filter(([name]) => name.endsWith("Dialog"))),
-    ...Object.fromEntries(["Toolbar", "EditorBar", "FindBar", "Sidebar", "Icon"].map((name) => [`./components/${name}`, { [name]: name }])),
-    "./i18n": {
-      I18nContext: { Provider: "Provider" }, initialLanguage: () => "en",
-      storeLanguage() {}, translator: () => (key) => key,
-    },
-    "./services/files/operations": { FileOperations },
-    "./services/files/platform": {
-      baseName: (path) => path, fromFile() {}, isDesktop: true, isPdfName: () => true,
-      onNativeFileDrop() {}, openExternal() {}, pickPdf: picker, readPath() {},
-      savePdf: async () => "new.pdf", setFullscreen: async (value) => calls.push(["fullscreen", value]),
-      setWindowTitle() {}, startupFilePath() {},
-    },
-    "./services/pdf/print": { printDocument() {} },
-    "./services/pdf/viewerController": {
-      OpenCancelled: class extends Error {}, PasswordCancelled: class extends Error {},
-      ViewerController: class { constructor() { return controller; } },
-    },
-  });
+  const element = (type, props) => ({ type, props });
+  const findAll = (type, node) => {
+    if (!node || typeof node !== "object") return [];
+    const children = node.props?.children;
+    return [...(node.type === type ? [node] : []), ...(Array.isArray(children) ? children.flat(Infinity) : [children]).flatMap((child) => findAll(type, child))];
+  };
   const render = () => {
     cursor = 0;
     tree = module.default();
-    return tree;
-  };
-  render();
-  // Only mount the controller effect; native/browser effects are boundary APIs.
-  hooks[0].current = {};
-  hooks[1].current = {};
-  effects[0]();
-  render();
-  const find = (type, node) => {
-    if (!node || typeof node !== "object") return;
-    if (node.type === type) return node;
-    const children = node.props?.children;
-    for (const child of Array.isArray(children) ? children.flat(Infinity) : [children]) {
-      const match = find(type, child);
-      if (match) return match;
+    for (const view of findAll("DocumentView", tree)) {
+      const { id, onReady, onStatus } = view.props;
+      if (handles.has(id)) continue;
+      const handle = {
+        name: null, dirty: false, presenting: false, allowClose: true,
+        async load(file) {
+          calls.push(["load", id, file.name]); this.name = file.name;
+          onStatus(id, { name: this.name, modified: this.dirty, presenting: this.presenting, modal: false });
+        },
+        hasUnsavedChanges() { return this.dirty; },
+        async confirmClose() { calls.push(["confirm", id]); return this.allowClose; },
+        async exitPresentation() { calls.push(["exitPresentation", id]); this.presenting = false; },
+        async destroy() { calls.push(["destroy", id]); },
+      };
+      handles.set(id, handle);
+      onReady(id, handle);
     }
   };
-  return { controller, calls, render, find: (type) => find(type, tree) };
+  const module = await loadModule("src/App.tsx", {
+    react: {
+      useState, useRef, useCallback: (fn) => fn, useMemo: (fn) => fn(),
+      useEffect: (fn) => effects.push(fn),
+      useSyncExternalStore(subscribe, snapshot) {
+        if (!subscribed) {
+          subscribed = true;
+          subscribe(() => {
+            if (scheduled) return;
+            scheduled = true;
+            queueMicrotask(() => { scheduled = false; render(); });
+          });
+        }
+        return snapshot();
+      },
+    },
+    "react/jsx-runtime": { jsx: element, jsxs: element },
+    "./components/DocumentView": { DocumentView: "DocumentView" },
+    "./components/TabStrip": { TabStrip: "TabStrip" },
+    "./components/Dialogs": { MessageDialog: "MessageDialog" },
+    "./i18n": { I18nContext: { Provider: "Provider" }, initialLanguage: () => "en", storeLanguage() {}, translator: () => (key) => key },
+    "./services/files/operations": { FileOperations },
+    "./services/tabs": { DocumentTabs },
+    "./services/files/platform": {
+      fromFile: async (file) => file, isDesktop: false, isPdfName: (name) => name.endsWith(".pdf"),
+      onNativeFileDrop: async () => () => {}, pickPdfs: picker, readPath() {}, startupFilePath: async () => null,
+    },
+  }, { window: {
+    addEventListener: (name, listener) => events.set(name, listener),
+    removeEventListener: (name) => events.delete(name),
+  } });
+  render();
+  // Mount the window keyboard effect; file picker/startup native APIs are fakes.
+  effects[2]();
+  const find = (type) => findAll(type, tree)[0];
+  return { calls, handles, render, find, events, open: () => find("DocumentView").props.onOpen() };
 }
 
-test("opening from presentation exits native fullscreen before replacing the document", async () => {
-  const fixture = await app({ presenting: true });
-  // Presentation hides the toolbar, but Ctrl+O uses the same open callback.
-  // Temporarily render the toolbar to capture it, then restore presentation.
-  fixture.controller.getState().presenting = false;
-  fixture.render();
-  const open = fixture.find("Toolbar").props.onOpen;
-  fixture.controller.getState().presenting = true;
-  open();
-  await tick();
-  assert.deepEqual(fixture.calls, [["fullscreen", false], ["presenting", false], ["open"]]);
+test("opening multiple files creates independent tabs and reuses the initial blank", async () => {
+  const fixture = await app(async () => [pdf("one.pdf"), pdf("two.pdf"), pdf("three.pdf")]);
+  fixture.open(); await tick();
+  const strip = fixture.find("TabStrip").props;
+  assert.deepEqual(Array.from(strip.tabs, (tab) => tab.name), ["one.pdf", "two.pdf", "three.pdf"]);
+  assert.equal(strip.activeId, strip.tabs[2].id);
+  assert.equal(fixture.calls.filter(([name]) => name === "load").length, 3);
 });
 
-test("cancelling the picker leaves presentation and the current document intact", async () => {
-  const fixture = await app({ picker: async () => null });
-  const open = fixture.find("Toolbar").props.onOpen;
-  fixture.controller.getState().presenting = true;
-  open();
-  await tick();
-  assert.deepEqual(fixture.calls, []);
-  assert.equal(fixture.controller.getState().presenting, true);
+test("switching tabs preserves each document and its unsaved edits", async () => {
+  const fixture = await app(async () => [pdf("one.pdf"), pdf("two.pdf")]);
+  fixture.open(); await tick();
+  const strip = fixture.find("TabStrip").props;
+  const first = fixture.handles.get(strip.tabs[0].id);
+  first.dirty = true;
+  strip.onActivate(strip.tabs[0].id); await tick();
+  assert.equal(fixture.find("TabStrip").props.activeId, strip.tabs[0].id);
+  assert.equal(fixture.handles.get(strip.tabs[0].id), first);
+  assert.equal(first.dirty, true);
+  assert.equal(fixture.calls.some(([name]) => name === "destroy"), false);
 });
 
-test("two open actions cannot overlap a pending file picker", async () => {
-  let resolvePicker;
-  let picks = 0;
-  const fixture = await app({ picker: () => { picks++; return new Promise((resolve) => { resolvePicker = resolve; }); } });
-  const open = fixture.find("Toolbar").props.onOpen;
-  open();
-  open();
+test("a pending picker excludes duplicate open actions and cancellation leaves tabs intact", async () => {
+  let resolve, picks = 0;
+  const fixture = await app(() => { picks++; return new Promise((done) => { resolve = done; }); });
+  fixture.open(); fixture.open();
   assert.equal(picks, 1);
-  resolvePicker(openedFile);
-  await tick();
-  assert.equal(fixture.calls.filter(([name]) => name === "open").length, 1);
+  resolve([]); await tick();
+  assert.equal(fixture.find("TabStrip").props.tabs.length, 1);
+  assert.equal(fixture.calls.length, 0);
 });
 
-test("edits made while the picker is pending are checked before the old document is closed", async () => {
-  let resolvePicker;
-  const fixture = await app({ picker: () => new Promise((resolve) => { resolvePicker = resolve; }) });
-  fixture.find("Toolbar").props.onOpen();
-  fixture.controller.dirty = true;
-  resolvePicker(openedFile);
-  await tick();
-  fixture.render();
-  assert.equal(fixture.calls.length, 0);
-  fixture.find("ConfirmDialog").props.onCancel();
-  await tick();
-  assert.equal(fixture.calls.length, 0, "cancel preserves the original document");
+test("opening a new PDF keeps edits made to the existing document while selecting files", async () => {
+  let resolve, picks = 0;
+  const fixture = await app(() => ++picks === 1 ? Promise.resolve([pdf("one.pdf")]) : new Promise((done) => { resolve = done; }));
+  fixture.open(); await tick();
+  const firstId = fixture.find("TabStrip").props.activeId;
+  fixture.open();
+  fixture.handles.get(firstId).dirty = true;
+  resolve([pdf("two.pdf")]); await tick();
+  assert.equal(fixture.find("TabStrip").props.tabs.length, 2);
+  assert.equal(fixture.handles.get(firstId).dirty, true);
+  assert.equal(fixture.calls.some(([name]) => name === "confirm" || name === "destroy"), false);
+});
+
+test("closing a dirty tab requires confirmation and cancellation preserves it", async () => {
+  const fixture = await app(async () => [pdf("one.pdf"), pdf("two.pdf")]);
+  fixture.open(); await tick();
+  const strip = fixture.find("TabStrip").props;
+  const id = strip.tabs[0].id;
+  const handle = fixture.handles.get(id);
+  handle.dirty = true; handle.allowClose = false;
+  strip.onClose(id); await tick();
+  assert.equal(fixture.find("TabStrip").props.tabs.length, 2);
+  assert.equal(fixture.find("TabStrip").props.activeId, id);
+  assert.equal(fixture.calls.some(([name]) => name === "destroy"), false);
+  handle.allowClose = true;
+  fixture.find("TabStrip").props.onClose(id); await tick();
+  assert.equal(fixture.find("TabStrip").props.tabs.length, 1);
+  assert.deepEqual(fixture.calls.filter(([name]) => name === "destroy"), [["destroy", id]]);
+});
+
+test("Ctrl+Tab selects the next document and Ctrl+W closes only the active one", async () => {
+  const fixture = await app(async () => [pdf("one.pdf"), pdf("two.pdf")]);
+  fixture.open(); await tick();
+  const firstId = fixture.find("TabStrip").props.tabs[0].id;
+  const key = (value) => fixture.events.get("keydown")({ key: value, ctrlKey: true, preventDefault() {}, stopPropagation() {} });
+  key("Tab"); await tick();
+  assert.equal(fixture.find("TabStrip").props.activeId, firstId);
+  key("w"); await tick();
+  assert.equal(fixture.find("TabStrip").props.tabs.length, 1);
+  assert.deepEqual(fixture.calls.filter(([name]) => name === "destroy"), [["destroy", firstId]]);
+});
+
+test("closing the last tab leaves a new empty tab", async () => {
+  const fixture = await app();
+  fixture.open(); await tick();
+  const id = fixture.find("TabStrip").props.activeId;
+  fixture.find("TabStrip").props.onClose(id); await tick();
+  const { tabs, activeId } = fixture.find("TabStrip").props;
+  assert.equal(tabs.length, 1);
+  assert.equal(tabs[0].name, null);
+  assert.notEqual(activeId, id);
 });

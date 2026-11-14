@@ -55,7 +55,7 @@ src-tauri/gen/schemas/
 
 # PDF.js runtime assets copied at build time
 public/pdfjs/
-public/dev-sample.pdf
+public/dev-*.pdf
 
 # Local agent/editor state
 .claude/

@@ -2,6 +2,10 @@ import { createContext, useContext } from "react";
 
 const en = {
   appTagline: "A light, clean PDF viewer",
+  documentTabs: "Open documents",
+  newTab: "New tab",
+  closeTab: "Close tab",
+  closeTabNamed: "Close {name}",
   openFile: "Open file",
   openHint: "Choose a PDF or drag it into this window.",
   dropHere: "Drop the PDF here",
@@ -90,6 +94,10 @@ export type MessageKey = keyof typeof en;
 
 const he: Record<MessageKey, string> = {
   appTagline: "מציג PDF קליל ונקי",
+  documentTabs: "מסמכים פתוחים",
+  newTab: "כרטיסייה חדשה",
+  closeTab: "סגירת כרטיסייה",
+  closeTabNamed: "סגירת {name}",
   openFile: "פתיחת קובץ",
   openHint: "בחרו קובץ PDF או גררו אותו לחלון.",
   dropHere: "שחררו כאן את הקובץ",

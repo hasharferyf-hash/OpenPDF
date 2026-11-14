@@ -89,6 +89,8 @@ const MIN_SCALE = 0.1;
 const MAX_SCALE = 10;
 
 interface EditorUIManager {
+  addEditListeners(): void;
+  removeEditListeners(): void;
   updateParams(type: number, value: unknown): void;
   undo(): void;
   redo(): void;
@@ -130,6 +132,11 @@ export class ViewerController {
   private readonly listeners = new Set<() => void>();
   private scaleBeforePresenting = "auto";
   private lastFind: FindOptions | null = null;
+  private readonly lifetime = new AbortController();
+  private readonly resizeObserver: ResizeObserver;
+  private active = true;
+  private destroyed = false;
+  private initialScalePending = false;
 
   constructor(container: HTMLDivElement, viewerElement: HTMLDivElement) {
     this.container = container;
@@ -141,6 +148,8 @@ export class ViewerController {
       updateMatchesCountOnProgress: true,
     });
     this.viewer = new PDFViewer({
+      // Supported by PDF.js 6.5; not included in its generated option types.
+      ...{ abortSignal: this.lifetime.signal },
       container,
       viewer: viewerElement,
       eventBus,
@@ -159,7 +168,8 @@ export class ViewerController {
     this.linkService.setViewer(this.viewer);
 
     eventBus.on("pagesinit", () => {
-      this.viewer.currentScaleValue = "auto";
+      this.initialScalePending = true;
+      this.handleResize();
       this.patch({ pageCount: this.viewer.pagesCount, page: this.viewer.currentPageNumber });
     });
     eventBus.on("pagechanging", (evt: { pageNumber: number }) => this.patch({ page: evt.pageNumber }));
@@ -174,6 +184,7 @@ export class ViewerController {
     );
     eventBus.on("annotationeditoruimanager", (evt: { uiManager: EditorUIManager }) => {
       this.uiManager = evt.uiManager;
+      if (!this.active) this.uiManager.removeEditListeners();
     });
     eventBus.on("annotationeditormodechanged", (evt: { mode: number }) => {
       const tool = (Object.keys(TOOL_TO_MODE) as EditorTool[]).find((k) => TOOL_TO_MODE[k] === evt.mode);
@@ -202,7 +213,8 @@ export class ViewerController {
         }),
     );
 
-    new ResizeObserver(() => this.handleResize()).observe(container);
+    this.resizeObserver = new ResizeObserver(() => this.handleResize());
+    this.resizeObserver.observe(container);
   }
 
   // --- state subscription (useSyncExternalStore compatible) ---
@@ -231,6 +243,7 @@ export class ViewerController {
 
   // --- document lifecycle ---
   async open(data: Uint8Array, askPassword: PasswordPrompt): Promise<void> {
+    if (this.destroyed) throw new OpenCancelled();
     // Reserve the request before waiting for the previous worker to stop.
     const request = ++this.openRequest;
     await this.closeDocument();
@@ -280,11 +293,34 @@ export class ViewerController {
     await this.closeDocument();
   }
 
+  /** Release a closed tab's worker, PDF.js DOM listeners, and observers. */
+  async destroy(): Promise<void> {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    await this.close();
+    this.resizeObserver.disconnect();
+    this.lifetime.abort();
+    this.listeners.clear();
+  }
+
+  setActive(active: boolean) {
+    if (this.destroyed) return;
+    if (!active) {
+      this.commitEdits();
+      this.uiManager?.removeEditListeners();
+    } else if (!this.active) {
+      this.uiManager?.addEditListeners();
+    }
+    this.active = active;
+    if (active) this.handleResize();
+  }
+
   private async closeDocument(): Promise<void> {
     const task = this.loadingTask;
     this.loadingTask = null;
     this.uiManager = null;
     this.lastFind = null;
+    this.initialScalePending = false;
     if (this.doc) {
       this.viewer.setDocument(null as unknown as PDFDocumentProxy);
       this.linkService.setDocument(null, null);
@@ -391,7 +427,11 @@ export class ViewerController {
   }
 
   private handleResize() {
-    if (!this.doc) return;
+    if (!this.doc || !this.active || !this.container.clientWidth || !this.container.clientHeight) return;
+    if (this.initialScalePending) {
+      this.initialScalePending = false;
+      this.viewer.currentScaleValue = "auto";
+    }
     const value = this.viewer.currentScaleValue;
     if (value === "auto" || value === "page-fit" || value === "page-width") {
       this.viewer.currentScaleValue = value;
