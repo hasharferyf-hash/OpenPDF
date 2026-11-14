@@ -51,17 +51,21 @@ function PdfPage({ document, pageNumber, scale, onVisible }: PdfPageProps) {
     const element = frameRef.current;
     if (!element) return;
 
-    const observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-          onVisible(pageNumber);
-        }
-      }
+    const renderObserver = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setIsVisible(true);
     }, { rootMargin: "900px 0px", threshold: 0.01 });
+    const activePageObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) onVisible(pageNumber);
+      }
+    }, { threshold: 0.5 });
 
-    observer.observe(element);
-    return () => observer.disconnect();
+    renderObserver.observe(element);
+    activePageObserver.observe(element);
+    return () => {
+      renderObserver.disconnect();
+      activePageObserver.disconnect();
+    };
   }, [onVisible, pageNumber]);
 
   useEffect(() => {
