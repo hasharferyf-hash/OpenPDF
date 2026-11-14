@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OpenPDF",
+  "version": "0.1.0",
+  "identifier": "com.openpdf.viewer",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "OpenPDF",
+        "width": 1200,
+        "height": 820,
+        "minWidth": 520,
+        "minHeight": 400,
+        "center": true,
+        "label": "main",
+        "dragDropEnabled": true,
+        "backgroundColor": "#525659"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost data: blob:; worker-src 'self' blob:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "msi"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "category": "Productivity",
+    "shortDescription": "A light, clean PDF viewer",
+    "longDescription": "A lightweight, local-first PDF viewer for Windows.",
+    "fileAssociations": [
+      {
+        "ext": [
+          "pdf"
+        ],
+        "name": "PDF Document",
+        "description": "PDF Document",
+        "mimeType": "application/pdf",
+        "role": "Viewer"
+      }
+    ]
+  }
+}
