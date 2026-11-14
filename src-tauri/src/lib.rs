@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn decodes_percent_encoded_paths() {
-        assert_eq!(percent_decode("C%3A%5Cdocs%5Ca%20b.pdf").unwrap(), "C:\docs\a b.pdf");
+        assert_eq!(percent_decode("C%3A%5Cdocs%5Ca%20b.pdf").unwrap(), r"C:\docs\a b.pdf");
         assert_eq!(percent_decode("%D7%A9%D7%9C%D7%95%D7%9D.pdf").unwrap(), "שלום.pdf");
         assert!(percent_decode("bad%2").is_err());
         assert!(percent_decode("bad%zz").is_err());
@@ -96,8 +96,8 @@ mod tests {
 
     #[test]
     fn accepts_only_pdf_paths() {
-        assert!(is_pdf_path(Path::new("C:\docs\File.PDF")));
-        assert!(!is_pdf_path(Path::new("C:\docs\file.exe")));
-        assert!(!is_pdf_path(Path::new("C:\docs\pdf")));
+        assert!(is_pdf_path(Path::new(r"C:\docs\File.PDF")));
+        assert!(!is_pdf_path(Path::new(r"C:\docs\file.exe")));
+        assert!(!is_pdf_path(Path::new(r"C:\docs\pdf")));
     }
 }
