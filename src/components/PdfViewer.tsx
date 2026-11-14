@@ -4,7 +4,6 @@ import {
   GlobalWorkerOptions,
   type PDFDocumentProxy,
   type PDFPageProxy,
-  type RenderTask,
 } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
@@ -72,7 +71,7 @@ function PdfPage({ document, pageNumber, scale, onVisible }: PdfPageProps) {
     const canvas = canvasRef.current;
     if (!page || !canvas || !isVisible) return;
 
-    let renderTask: RenderTask | undefined;
+    let renderTask: ReturnType<PDFPageProxy["render"]> | undefined;
     const viewport = page.getViewport({ scale });
     const pixelRatio = window.devicePixelRatio || 1;
     const context = canvas.getContext("2d", { alpha: false });
@@ -141,10 +140,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
       const task = getDocument({ data: new Uint8Array(buffer) });
       loadingTask = task;
       return task.promise.then((loadedDocument) => {
-        if (cancelled) {
-          void loadedDocument.destroy();
-          return;
-        }
+        if (cancelled) return;
         setDocument(loadedDocument);
         setLoading(false);
       });
