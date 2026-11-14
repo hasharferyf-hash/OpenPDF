@@ -1,0 +1,33 @@
+name: Bug report
+description: Report a reproducible problem
+title: "[Bug]: "
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A concise description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open ...\n2. Select ...\n3. Observe ..."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: OpenPDF version
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: "Windows 10 or Windows 11 (include build if known)"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Remove personal information and document contents before sharing.
