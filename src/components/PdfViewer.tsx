@@ -125,7 +125,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
 
   useEffect(() => {
     let cancelled = false;
-    const loadingTask = getDocument({ data: new Uint8Array() });
+    let loadingTask: ReturnType<typeof getDocument> | null = null;
     setLoading(true);
     setError(null);
     setDocument(null);
@@ -134,8 +134,8 @@ export default function PdfViewer({ file }: PdfViewerProps) {
 
     file.arrayBuffer().then((buffer) => {
       if (cancelled) return;
-      const task = getDocument({ data: new Uint8Array(buffer) });
-      return task.promise.then((loadedDocument) => {
+      loadingTask = getDocument({ data: new Uint8Array(buffer) });
+      return loadingTask.promise.then((loadedDocument) => {
         if (cancelled) {
           void loadedDocument.destroy();
           return;
@@ -152,7 +152,7 @@ export default function PdfViewer({ file }: PdfViewerProps) {
 
     return () => {
       cancelled = true;
-      void loadingTask.destroy();
+      if (loadingTask) void loadingTask.destroy();
     };
   }, [file]);
 
