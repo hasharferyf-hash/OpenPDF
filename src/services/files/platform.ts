@@ -23,16 +23,18 @@ export async function readPath(path: string): Promise<OpenedFile> {
   return { name: baseName(path), path, data: new Uint8Array(buffer) };
 }
 
-function pickWithInput(): Promise<OpenedFile | null> {
-  return new Promise((resolve) => {
+function pickWithInput(multiple = false): Promise<OpenedFile[]> {
+  return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "application/pdf,.pdf";
+    input.multiple = multiple;
     input.onchange = async () => {
-      const file = input.files?.[0];
-      resolve(file ? await fromFile(file) : null);
+      try {
+        resolve(await Promise.all(Array.from(input.files ?? []).map(fromFile)));
+      } catch (error) { reject(error); }
     };
-    input.oncancel = () => resolve(null);
+    input.oncancel = () => resolve([]);
     input.click();
   });
 }
@@ -42,10 +44,18 @@ export async function fromFile(file: File): Promise<OpenedFile> {
 }
 
 export async function pickPdf(): Promise<OpenedFile | null> {
-  if (!isDesktop) return pickWithInput();
+  if (!isDesktop) return (await pickWithInput())[0] ?? null;
   const { open } = await import("@tauri-apps/plugin-dialog");
   const path = await open({ multiple: false, directory: false, filters: PDF_FILTER });
   return typeof path === "string" ? readPath(path) : null;
+}
+
+export async function pickPdfs(): Promise<OpenedFile[]> {
+  if (!isDesktop) return pickWithInput(true);
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({ multiple: true, directory: false, filters: PDF_FILTER });
+  const paths = typeof selected === "string" ? [selected] : selected ?? [];
+  return Promise.all(paths.map(readPath));
 }
 
 /** Asks where to save and writes the bytes. Resolves to the saved path/name, or null if cancelled. */

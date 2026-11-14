@@ -6,6 +6,7 @@ OpenPDF is a desktop application built with Tauri 2, React, TypeScript, and Mozi
 
 ## Features
 
+- Browser-style document tabs: open multiple PDFs together, keep each document's annotations, page, zoom, search and sidebar state, and close documents independently.
 - Chrome-inspired toolbar with page navigation, direct page jump, zoom, fit-to-page, fit-to-width, and rotation.
 - Continuous page view, thumbnail sidebar, and document outline/bookmarks.
 - Find in document (Ctrl+F), including match count, case-sensitive search, and whole-word matching.
@@ -25,6 +26,9 @@ Feature availability is implemented in the application code; compatibility and e
 | Action | Shortcut |
 | --- | --- |
 | Open / save a copy / print | Ctrl+O / Ctrl+S / Ctrl+P |
+| New tab / close tab | Ctrl+T / Ctrl+W |
+| Next / previous tab | Ctrl+Tab / Ctrl+Shift+Tab (or Ctrl+PageDown / Ctrl+PageUp) |
+| Select tab 1–8 / last tab | Ctrl+1–8 / Ctrl+9 |
 | Find, next / previous match | Ctrl+F, Enter / Shift+Enter |
 | Zoom in / out / automatic | Ctrl++ / Ctrl+- / Ctrl+0 (or Ctrl+mouse wheel) |
 | Rotate clockwise / counterclockwise | Ctrl+] / Ctrl+[ |

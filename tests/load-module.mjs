@@ -12,8 +12,11 @@ export async function loadModule(path, imports = {}, globals = {}) {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX },
     fileName: fileURLToPath(url),
   });
-  const context = createContext({ console, URL, Uint8Array, setTimeout, clearTimeout, ...globals });
-  const module = new SourceTextModule(outputText, { context, identifier: url.href });
+  const context = createContext({ console, URL, Uint8Array, AbortController, queueMicrotask, setTimeout, clearTimeout, ...globals });
+  const module = new SourceTextModule(outputText, {
+    context, identifier: url.href,
+    initializeImportMeta(meta) { meta.env = { DEV: false }; },
+  });
   await module.link((specifier) => {
     if (!(specifier in imports)) throw new Error(`Unmocked import: ${specifier}`);
     const values = imports[specifier];

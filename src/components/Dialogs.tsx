@@ -7,7 +7,12 @@ function Dialog(props: { title: string; onClose(): void; children: ReactNode; ac
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = ref.current;
-    if (dialog && !dialog.open) dialog.showModal();
+    if (dialog && !dialog.open) {
+      dialog.showModal();
+      // React's autoFocus runs before showModal. Focus again after opening so
+      // a discard confirmation defaults to its safe primary (Cancel) action.
+      dialog.querySelector<HTMLElement>("input:not([disabled]), button.primary-button:not([disabled])")?.focus();
+    }
   }, []);
   return (
     <dialog

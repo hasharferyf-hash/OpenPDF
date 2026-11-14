@@ -32,7 +32,9 @@ The feature list describes implemented code paths. Individual behaviors, edge ca
 
 ## Module boundaries
 
-- src/App.tsx: application composition, document lifecycle, keyboard shortcuts, dialogs, and coordination between UI and services.
+- src/App.tsx: tab composition, multi-file selection/drop, window-wide shortcuts, and unsaved-change checks across every tab on application exit.
+- src/services/tabs.ts: stable tab identities, selection, neighboring-tab behavior, readiness and close-all confirmation.
+- src/components/DocumentView.tsx: one mounted document session per tab, with its own viewer, annotation/undo history, page/zoom/scroll, search, sidebar and dialogs. Inactive sessions stay mounted but are hidden; their editor shortcuts are suspended. Closing a tab destroys its worker and DOM listeners.
 - src/components: presentational UI (toolbar, editor bar, sidebar, find bar, dialogs, and icons).
 - src/i18n: Hebrew and English strings and translation helpers.
 - src/services/pdf: the frontend adapter around PDF.js.
@@ -53,6 +55,7 @@ The feature list describes implemented code paths. Individual behaviors, edge ca
 - Rust/Tauri owns operating-system integration that cannot be handled safely or reliably in the webview.
 - Native commands must validate inputs and expose the smallest practical API.
 - File dialogs, document replacement, saving, and print preparation share an exclusive operation guard. Native close requests are blocked while one is active.
+- Opening another PDF creates a tab instead of replacing an open document. Closing a dirty tab activates it and asks for confirmation; cancelling application exit preserves every tab, including previously confirmed ones.
 - A completed save clears the unsaved flag only when the active document and serialized annotation hash still match the saved snapshot. Native writes flush a temporary file in the destination directory before atomically renaming it over the target.
 - PDF document contents must remain local; do not add uploads, telemetry, or remote document processing without an explicitly approved project change.
 
