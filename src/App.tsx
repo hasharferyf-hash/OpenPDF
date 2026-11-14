@@ -5,7 +5,16 @@ import { FindBar } from "./components/FindBar";
 import { Icon } from "./components/Icon";
 import { Sidebar } from "./components/Sidebar";
 import { Toolbar } from "./components/Toolbar";
-import { I18nContext, initialLanguage, storeLanguage, translator, type Language } from "./i18n";
+import {
+  I18nContext,
+  initialLanguage,
+  initialTheme,
+  storeLanguage,
+  storeTheme,
+  translator,
+  type Language,
+  type ThemePreference,
+} from "./i18n";
 import {
   baseName,
   fromFile,
@@ -17,6 +26,7 @@ import {
   readPath,
   savePdf,
   setFullscreen,
+  setNativeTheme,
   setWindowTitle,
   startupFilePath,
   type OpenedFile,
@@ -45,6 +55,7 @@ export default function App() {
   const viewerRef = useRef<HTMLDivElement>(null);
   const [controller, setController] = useState<ViewerController | null>(null);
   const [language, setLanguage] = useState<Language>(initialLanguage);
+  const [theme, setTheme] = useState<ThemePreference>(initialTheme);
   const [file, setFile] = useState<CurrentFile | null>(null);
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState<Modal | null>(null);
@@ -73,6 +84,19 @@ export default function App() {
   const subscribe = useCallback((listener: () => void) => controller?.subscribe(listener) ?? (() => undefined), [controller]);
   const state = useSyncExternalStore(subscribe, () => controller?.getState() ?? null);
   const findState = useSyncExternalStore(subscribe, () => controller?.getFindState() ?? null);
+
+  // Resolve "system" through the OS setting and keep following it while the app runs.
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      const resolved = theme === "system" ? (media.matches ? "dark" : "light") : theme;
+      document.documentElement.dataset.theme = resolved;
+    };
+    apply();
+    void setNativeTheme(theme).catch(() => undefined);
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [theme]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -413,6 +437,11 @@ export default function App() {
             fileName={file?.name ?? "OpenPDF"}
             sidebarOpen={sidebarOpen}
             annotationsVisible={annotationsVisible}
+            theme={theme}
+            onThemeChange={(next) => {
+              setTheme(next);
+              storeTheme(next);
+            }}
             onToggleSidebar={() => setSidebarOpen((open) => !open)}
             onOpen={openPicker}
             onSave={() => void save()}

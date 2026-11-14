@@ -1,0 +1,3 @@
+This file switches OpenPDF to portable mode: settings and cache are kept in the
+"OpenPDF-data" folder next to OpenPDF.exe instead of your user profile.
+Delete this file to use the normal per-user location.

@@ -38,13 +38,45 @@ jobs:
         run: npm run build
       - name: Test native code
         run: cargo test --manifest-path src-tauri/Cargo.toml
-      - name: Build Windows installers
+      - name: Build standard installers (WebView2 downloaded only if missing)
         run: npm run tauri build
-      - name: Upload installer artifacts
+      - name: Collect standard installers and portable build
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $out = "dist-release"
+          New-Item -ItemType Directory -Force "$out/setup", "$out/portable/OpenPDF" | Out-Null
+          Copy-Item src-tauri/target/release/bundle/nsis/*.exe "$out/setup/"
+          Copy-Item src-tauri/target/release/bundle/msi/*.msi "$out/setup/"
+          Copy-Item src-tauri/target/release/openpdf.exe "$out/portable/OpenPDF/OpenPDF.exe"
+          Copy-Item packaging/portable/* "$out/portable/OpenPDF/"
+          Copy-Item LICENSE, THIRD_PARTY_NOTICES.md "$out/portable/OpenPDF/"
+          Compress-Archive -Path "$out/portable/OpenPDF" -DestinationPath "$out/OpenPDF_${version}_x64-portable.zip"
+          Remove-Item -Recurse -Force src-tauri/target/release/bundle/nsis
+      - name: Build full installer (WebView2 included, works offline)
+        run: npm run tauri build -- --config src-tauri/tauri.full.conf.json
+      - name: Collect full installer
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          New-Item -ItemType Directory -Force dist-release/full | Out-Null
+          Copy-Item $setup.FullName ("dist-release/full/" + $setup.Name.Replace("-setup.exe", "-setup-with-WebView2.exe"))
+          Get-ChildItem -Recurse dist-release -File | Format-Table Name, @{ n = "MB"; e = { [math]::Round($_.Length / 1MB, 1) } }
+      - name: Upload full installer (with WebView2)
         uses: actions/upload-artifact@v4
         with:
-          name: OpenPDF-Windows-installers
-          path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/msi/*.msi
+          name: OpenPDF-setup-with-WebView2
+          path: dist-release/full/*.exe
+          if-no-files-found: error
+      - name: Upload standard installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenPDF-setup
+          path: dist-release/setup/*
+          if-no-files-found: error
+      - name: Upload portable version
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenPDF-portable
+          path: dist-release/*.zip
           if-no-files-found: error

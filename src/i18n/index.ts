@@ -51,6 +51,10 @@ const en = {
   noMatches: "No results",
   close: "Close",
   language: "עברית",
+  theme: "Theme",
+  themeSystem: "Auto",
+  themeLight: "Light",
+  themeDark: "Dark",
   loading: "Opening…",
   preparingPrint: "Preparing {done} of {count} pages for printing…",
   cancel: "Cancel",
@@ -139,6 +143,10 @@ const he: Record<MessageKey, string> = {
   noMatches: "אין תוצאות",
   close: "סגירה",
   language: "English",
+  theme: "ערכת נושא",
+  themeSystem: "אוטומטית",
+  themeLight: "בהירה",
+  themeDark: "כהה",
   loading: "פותח…",
   preparingPrint: "מכין להדפסה {done} מתוך {count} עמודים…",
   cancel: "ביטול",
@@ -175,6 +183,7 @@ const he: Record<MessageKey, string> = {
 };
 
 export type Language = "en" | "he";
+export type ThemePreference = "system" | "light" | "dark";
 
 const dictionaries: Record<Language, Record<MessageKey, string>> = { en, he };
 const STORAGE_KEY = "openpdf.language";
@@ -192,6 +201,26 @@ export function initialLanguage(): Language {
 export function storeLanguage(language: Language) {
   try {
     localStorage.setItem(STORAGE_KEY, language);
+  } catch {
+    // Not critical.
+  }
+}
+
+const THEME_KEY = "openpdf.theme";
+
+export function initialTheme(): ThemePreference {
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === "system" || stored === "light" || stored === "dark") return stored;
+  } catch {
+    // Storage may be unavailable; follow the system.
+  }
+  return "system";
+}
+
+export function storeTheme(theme: ThemePreference) {
+  try {
+    localStorage.setItem(THEME_KEY, theme);
   } catch {
     // Not critical.
   }
