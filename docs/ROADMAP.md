@@ -7,27 +7,31 @@ This roadmap describes the intended order of work. Issues and pull requests are 
 - [x] Add contributor workflow and architecture documentation.
 - [x] Add baseline Tauri + React + TypeScript application scaffold.
 - [x] Add Windows CI build.
-- [ ] Confirm the first CI build succeeds on GitHub Actions.
+- [x] Confirm the first CI build succeeds on GitHub Actions.
 
 ## Phase 1 — PDF engine
-- [ ] Add PDF.js and configure its worker.
-- [ ] Load a local PDF from a file input.
-- [ ] Render pages with continuous scrolling.
-- [ ] Handle password-protected and malformed documents.
-- [ ] Clean up document, worker, and canvas resources.
+- [x] Add PDF.js and configure its worker.
+- [x] Load a local PDF from a file input.
+- [x] Render pages with continuous scrolling.
+- [x] Handle password-protected and malformed documents.
+- [x] Clean up document, worker, and canvas resources.
 
 ## Phase 2 — Chrome-inspired viewer
-- [ ] Toolbar and page navigation.
-- [ ] Zoom, fit-to-width, fit-to-page, and rotation.
-- [ ] Thumbnail sidebar.
-- [ ] Text selection and search.
-- [ ] Dark and light themes.
-- [ ] Keyboard shortcuts and accessibility pass.
+- [x] Toolbar and page navigation.
+- [x] Zoom, fit-to-width, fit-to-page, and rotation.
+- [x] Thumbnail sidebar.
+- [x] Text selection and search.
+- [x] Drawing, highlighting and text annotations saved into the PDF.
+- [x] Save a copy, print, two-page view, presentation mode, document properties.
+- [x] Hebrew and English interface.
+- [ ] Light theme (the viewer currently uses a Chrome-like dark toolbar).
+- [x] Keyboard shortcuts.
+- [ ] Accessibility pass.
 
 ## Phase 3 — Windows integration
-- [ ] Register PDF file association capability in the installer.
+- [x] Register PDF file association capability in the installer.
 - [ ] Support Open with and Windows default-app selection.
-- [ ] Open a PDF passed on process startup.
+- [x] Open a PDF passed on process startup.
 - [ ] Handle files passed to an already-running instance.
 - [ ] Verify install, upgrade, and uninstall behavior on Windows 10 and 11.
 

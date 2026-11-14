@@ -15,21 +15,40 @@
         "title": "OpenPDF",
         "width": 1200,
         "height": 820,
-        "minWidth": 760,
-        "minHeight": 560,
-        "center": true
+        "minWidth": 520,
+        "minHeight": 400,
+        "center": true,
+        "label": "main",
+        "dragDropEnabled": true,
+        "backgroundColor": "#525659"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src ipc: http://ipc.localhost; worker-src 'self' blob:"
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost data: blob:; worker-src 'self' blob:"
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
-    "icon": ["icons/icon.ico"],
+    "targets": [
+      "nsis",
+      "msi"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ],
     "category": "Productivity",
-    "shortDescription": "A clean PDF viewer",
-    "longDescription": "A lightweight, local-first PDF viewer for Windows."
+    "shortDescription": "A light, clean PDF viewer",
+    "longDescription": "A lightweight, local-first PDF viewer for Windows.",
+    "fileAssociations": [
+      {
+        "ext": [
+          "pdf"
+        ],
+        "name": "PDF Document",
+        "description": "PDF Document",
+        "mimeType": "application/pdf",
+        "role": "Viewer"
+      }
+    ]
   }
 }

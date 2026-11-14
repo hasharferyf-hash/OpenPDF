@@ -52,3 +52,10 @@ coverage/
 
 # Tauri generated artifacts
 src-tauri/gen/schemas/
+
+# PDF.js runtime assets copied at build time
+public/pdfjs/
+public/dev-sample.pdf
+
+# Local agent/editor state
+.claude/

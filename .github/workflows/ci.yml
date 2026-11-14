@@ -36,6 +36,8 @@ jobs:
         run: npm run check
       - name: Build frontend
         run: npm run build
+      - name: Test native code
+        run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Build Windows installers
         run: npm run tauri build
       - name: Upload installer artifacts

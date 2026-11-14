@@ -12,20 +12,21 @@ OpenPDF is at the foundation stage. The current UI is only a shell; PDF parsing 
 
 The application is designed to work locally. Opening and rendering a document must not require uploading it or contacting a remote service.
 
-## Planned boundaries
-- src/app: application composition and global state.
-- src/components: reusable UI components.
-- src/features/document: open/close document lifecycle.
-- src/features/viewer: page layout, zoom, scroll, and rendering.
-- src/features/thumbnails: page thumbnail navigation.
-- src/features/search: text search.
-- src/services/pdf: PDF.js adapter and worker configuration.
-- src/services/files: local file input and drag/drop.
-- src-tauri/src: native commands and Windows integration.
+## Module boundaries
+- src/App.tsx: application composition, document lifecycle, keyboard shortcuts, dialogs.
+- src/components: presentational UI (Toolbar, EditorBar, Sidebar, FindBar, Dialogs, Icon).
+- src/i18n: Hebrew and English strings and the translation helper.
+- src/services/pdf: the PDF.js adapter.
+  - viewerController.ts wraps the PDF.js viewer (pages, zoom, rotation, spreads, search, annotation editor) and exposes plain state that React subscribes to.
+  - documentInfo.ts reads metadata, the outline, and renders thumbnails.
+  - print.ts rasterizes pages for the system print dialog.
+- src/services/files: local file access (native dialogs and commands in the desktop app; file input and download in a plain browser).
+- scripts/copy-pdfjs-assets.mjs: copies PDF.js CMaps, fonts, ICC profiles and WASM decoders into public/pdfjs at build time so everything works offline.
+- src-tauri/src: native commands (`read_pdf`, `write_pdf`, `startup_file`).
 - src-tauri/capabilities: explicit Tauri permissions.
 - docs: contributor and technical documentation.
 
-This is the intended direction, not a requirement to create every folder immediately. Add a module when a real feature needs it.
+Add a module when a real feature needs it.
 
 ## Responsibility rules
 - React components render UI and forward user intent.
@@ -45,7 +46,9 @@ This is the intended direction, not a requirement to create every folder immedia
 ## Windows integration
 The installer should register OpenPDF as a PDF-capable application so it appears in Open with. Windows remains responsible for the user's default-app choice; the application must not silently overwrite it.
 
-File-open handling must support cold start and warm start. This will be implemented and tested in a dedicated Windows integration phase.
+The installer registers the .pdf association (bundle.fileAssociations). A file passed on the command line is opened at startup (cold start). Each launch currently opens its own window; routing files to an already-running instance (warm start) is not implemented.
+
+The native commands only accept paths with a .pdf extension, and writes only go to an absolute path chosen in the native save dialog.
 
 ## Dependency and licensing policy
 - Prefer maintained upstream packages.
