@@ -67,12 +67,12 @@ async function app(picker = async () => [pdf("one.pdf")]) {
     "./components/DocumentView": { DocumentView: "DocumentView" },
     "./components/TabStrip": { TabStrip: "TabStrip" },
     "./components/Dialogs": { MessageDialog: "MessageDialog" },
-    "./i18n": { I18nContext: { Provider: "Provider" }, initialLanguage: () => "en", storeLanguage() {}, translator: () => (key) => key },
+    "./i18n": { I18nContext: { Provider: "Provider" }, initialLanguage: () => "en", storeLanguage() {}, initialTheme: () => "system", storeTheme() {}, translator: () => (key) => key },
     "./services/files/operations": { FileOperations },
     "./services/tabs": { DocumentTabs },
     "./services/files/platform": {
       fromFile: async (file) => file, isDesktop: false, isPdfName: (name) => name.endsWith(".pdf"),
-      onNativeFileDrop: async () => () => {}, pickPdfs: picker, readPath() {}, startupFilePath: async () => null,
+      onNativeFileDrop: async () => () => {}, pickPdfs: picker, readPath() {}, setNativeTheme: async () => {}, startupFilePath: async () => null,
     },
   }, { window: {
     addEventListener: (name, listener) => events.set(name, listener),

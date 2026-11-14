@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useI18n } from "../i18n";
+import { useI18n, type ThemePreference } from "../i18n";
 import type { EditorTool, ViewerController, ViewerState } from "../services/pdf/viewerController";
 import { Icon, IconButton, type IconName } from "./Icon";
 
@@ -9,6 +9,8 @@ interface ToolbarProps {
   fileName: string;
   sidebarOpen: boolean;
   annotationsVisible: boolean;
+  theme: ThemePreference;
+  onThemeChange(theme: ThemePreference): void;
   onToggleSidebar(): void;
   onOpen(): void;
   onSave(): void;
@@ -228,6 +230,23 @@ export function Toolbar(props: ToolbarProps) {
                 onSelect={select(props.onProperties)}
               />
               <div className="menu-divider" />
+              <div className="menu-row">
+                <Icon name="theme" size={18} />
+                <span className="menu-label">{t("theme")}</span>
+                <div className="segmented" role="radiogroup" aria-label={t("theme")}>
+                  {(["system", "light", "dark"] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={props.theme === value}
+                      onClick={() => props.onThemeChange(value)}
+                    >
+                      {t(value === "system" ? "themeSystem" : value === "light" ? "themeLight" : "themeDark")}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <MenuItem icon="globe" label={t("language")} onSelect={select(props.onToggleLanguage)} />
             </div>
           )}

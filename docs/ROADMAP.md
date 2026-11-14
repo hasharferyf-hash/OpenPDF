@@ -29,7 +29,7 @@ This roadmap tracks implementation and release readiness. A checked implementati
 - [x] Save a copy, print, two-page view, presentation mode, and document properties.
 - [x] Hebrew and English interface with RTL layout support.
 - [x] Keyboard shortcuts.
-- [ ] Light theme.
+- [x] Light theme (automatic, light, or dark).
 - [ ] Accessibility review and keyboard/screen-reader pass.
 
 ## Phase 3 — Windows integration
@@ -39,7 +39,8 @@ This roadmap tracks implementation and release readiness. A checked implementati
 - [ ] Verify actual installer registration and Windows Open with / default-app selection on clean Windows 10 and Windows 11 systems.
 - [ ] Forward file-open requests to an already-running instance (warm start / single-instance routing).
 - [ ] Verify install, upgrade, repair, and uninstall behavior.
-- [ ] Decide and implement the required WebView2 installation mode. The current configuration does not explicitly bundle an offline WebView2 Runtime.
+- [x] Offer an installer with the offline WebView2 Runtime, a standard installer, and a portable ZIP.
+- [ ] Verify the WebView2 offline installer and the portable build on a Windows machine without WebView2.
 
 ## Phase 4 — Quality and release
 
