@@ -45,7 +45,7 @@ This roadmap describes the intended order of work. Issues and pull requests are 
 - [ ] Publish release notes and corresponding source for each binary release.
 
 ## Current validation boundary
-A successful TypeScript/Vite/Tauri build proves that the code compiles and the installer can be packaged. It does **not** prove that PDF.js can load its worker or render real documents inside the Windows WebView. That requires a successful CI run plus manual testing with representative PDF files on Windows.
+A successful TypeScript/Vite/Tauri build proves that the code compiles and the installer can be packaged. It does **not** prove that PDF.js can load its worker or render real documents inside the Windows WebView. That requires a successful CI run plus manual testing with representative PDF files on Windows. The foundation CI workflow also listens for pull requests targeting the foundation branch so stacked feature PRs can be validated before the foundation is merged.
 
 ## Parallel work
 Split work into Issues with one primary owner and a clear file/module boundary. Avoid assigning two contributors to the same feature or files simultaneously. Cross-cutting changes require an early Draft PR and coordination in the Issue.
