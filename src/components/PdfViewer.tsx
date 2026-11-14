@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getDocument,
   GlobalWorkerOptions,
@@ -134,8 +134,9 @@ export default function PdfViewer({ file }: PdfViewerProps) {
 
     file.arrayBuffer().then((buffer) => {
       if (cancelled) return;
-      loadingTask = getDocument({ data: new Uint8Array(buffer) });
-      return loadingTask.promise.then((loadedDocument) => {
+      const task = getDocument({ data: new Uint8Array(buffer) });
+      loadingTask = task;
+      return task.promise.then((loadedDocument) => {
         if (cancelled) {
           void loadedDocument.destroy();
           return;
@@ -156,12 +157,6 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     };
   }, [file]);
 
-  useEffect(() => {
-    return () => {
-      if (document) void document.destroy();
-    };
-  }, [document]);
-
   function goToPage(pageNumber: number) {
     if (!document) return;
     const target = Math.max(1, Math.min(document.numPages, pageNumber));
@@ -169,7 +164,9 @@ export default function PdfViewer({ file }: PdfViewerProps) {
     setCurrentPage(target);
   }
 
-  const handlePageVisible = (pageNumber: number) => setCurrentPage(pageNumber);
+  const handlePageVisible = useCallback((pageNumber: number) => {
+    setCurrentPage(pageNumber);
+  }, []);
 
   return (
     <section className="document-view">
