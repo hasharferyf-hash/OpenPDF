@@ -52,6 +52,8 @@ The feature list describes implemented code paths. Individual behaviors, edge ca
 - services/pdf is the frontend boundary that should directly depend on PDF.js.
 - Rust/Tauri owns operating-system integration that cannot be handled safely or reliably in the webview.
 - Native commands must validate inputs and expose the smallest practical API.
+- File dialogs, document replacement, saving, and print preparation share an exclusive operation guard. Native close requests are blocked while one is active.
+- A completed save clears the unsaved flag only when the active document and serialized annotation hash still match the saved snapshot. Native writes flush a temporary file in the destination directory before atomically renaming it over the target.
 - PDF document contents must remain local; do not add uploads, telemetry, or remote document processing without an explicitly approved project change.
 
 ## PDF rendering and security principles
@@ -62,6 +64,8 @@ The feature list describes implemented code paths. Individual behaviors, edge ca
 - Preserve text selection and accessibility; a canvas-only viewer is insufficient.
 - Treat PDFs as untrusted input. Keep PDF.js updated and avoid unnecessary native parsing.
 - Keep Tauri capabilities and the Content Security Policy restrictive.
+
+Printing targets 150 DPI for ordinary documents. Raster preparation caps decoded page images at approximately 128 MiB in total, with a working canvas capped at 64 MiB and 8192 pixels per dimension. Long documents and oversized pages use a lower raster resolution to fit this budget; physical paper dimensions remain unchanged. These limits cover page rasters, not PDF.js, the native print spooler, or all WebView memory. Cancelling preparation interrupts the current render and releases temporary resources.
 
 ## Windows integration
 

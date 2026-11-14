@@ -65,6 +65,7 @@ Run validation before submitting a pull request:
 
 ```sh
 npm run check
+npm test
 npm run build
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
