@@ -62,6 +62,13 @@ export interface FindOptions {
 export type PasswordPrompt = (wrongPassword: boolean) => Promise<string | null>;
 
 export class PasswordCancelled extends Error {}
+export class OpenCancelled extends Error {}
+
+export interface SaveSnapshot {
+  readonly document: PDFDocumentProxy;
+  readonly annotationHash: string;
+  readonly data: Uint8Array;
+}
 
 const TOOL_TO_MODE: Record<EditorTool, number> = {
   none: AnnotationEditorType.NONE,
@@ -115,6 +122,7 @@ export class ViewerController {
   private readonly findController: PDFFindController;
   private readonly viewer: PDFViewer;
   private loadingTask: PDFDocumentLoadingTask | null = null;
+  private openRequest = 0;
   private uiManager: EditorUIManager | null = null;
   private doc: PDFDocumentProxy | null = null;
   private state: ViewerState = INITIAL_STATE;
@@ -223,7 +231,10 @@ export class ViewerController {
 
   // --- document lifecycle ---
   async open(data: Uint8Array, askPassword: PasswordPrompt): Promise<void> {
-    await this.close();
+    // Reserve the request before waiting for the previous worker to stop.
+    const request = ++this.openRequest;
+    await this.closeDocument();
+    if (request !== this.openRequest) throw new OpenCancelled();
     const task = getDocument({
       data,
       cMapUrl: assetUrl("cmaps"),
@@ -243,12 +254,13 @@ export class ViewerController {
       doc = await task.promise;
     } catch (error) {
       if (this.loadingTask === task) this.loadingTask = null;
+      await task.destroy().catch(() => undefined);
+      if (request !== this.openRequest) throw new OpenCancelled();
       throw error;
     }
-    if (this.loadingTask !== task) {
-      // A newer open() superseded this one.
-      void task.destroy();
-      return;
+    if (request !== this.openRequest) {
+      await task.destroy().catch(() => undefined);
+      throw new OpenCancelled();
     }
     this.doc = doc;
     const storage = doc.annotationStorage as unknown as {
@@ -264,6 +276,11 @@ export class ViewerController {
   }
 
   async close(): Promise<void> {
+    ++this.openRequest;
+    await this.closeDocument();
+  }
+
+  private async closeDocument(): Promise<void> {
     const task = this.loadingTask;
     this.loadingTask = null;
     this.uiManager = null;
@@ -273,7 +290,8 @@ export class ViewerController {
       this.linkService.setDocument(null, null);
       this.doc = null;
     }
-    this.patch({ ...INITIAL_STATE, presenting: this.state.presenting });
+    this.findState = INITIAL_FIND;
+    this.patch({ ...INITIAL_STATE });
     if (task) await task.destroy().catch(() => undefined);
   }
 
@@ -282,6 +300,17 @@ export class ViewerController {
     const doc = this.requireDoc();
     this.commitEdits();
     return doc.annotationStorage.size > 0 ? doc.saveDocument() : doc.getData();
+  }
+
+  /** Captures the exact document and annotation contents being written. */
+  async prepareSave(): Promise<SaveSnapshot> {
+    const doc = this.requireDoc();
+    this.commitEdits();
+    // PDF.js only emits onSetModified on its first change, so a boolean or
+    // event counter cannot detect subsequent edits during serialization.
+    const annotationHash = doc.annotationStorage.serializable.hash;
+    const data = await (doc.annotationStorage.size > 0 ? doc.saveDocument() : doc.getData());
+    return { document: doc, annotationHash, data };
   }
 
   /**
@@ -302,9 +331,16 @@ export class ViewerController {
     return this.state.modified;
   }
 
-  markSaved() {
-    this.doc?.annotationStorage.resetModified();
+  markSaved(snapshot: SaveSnapshot): boolean {
+    if (this.doc !== snapshot.document) return false;
+    this.commitEdits();
+    if (this.doc.annotationStorage.serializable.hash !== snapshot.annotationHash) {
+      this.patch({ modified: true });
+      return false;
+    }
+    this.doc.annotationStorage.resetModified();
     this.patch({ modified: false });
+    return true;
   }
 
   private requireDoc(): PDFDocumentProxy {

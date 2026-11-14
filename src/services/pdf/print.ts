@@ -1,10 +1,26 @@
 // Prints the document by rasterizing every page with the "print" intent into a
 // hidden container that only becomes visible in the print media (see styles.css).
-import { AnnotationMode, type PDFDocumentProxy } from "pdfjs-dist";
+import { AnnotationMode, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
 
 const PRINT_DPI = 150;
 const PRINT_UNITS = PRINT_DPI / 72;
 const CONTAINER_ID = "print-container";
+// Bound the decoded page bitmaps to roughly 128 MiB, plus one working canvas
+// (at most 64 MiB). This is a raster budget, not a limit on total WebView memory.
+const MAX_TOTAL_PIXELS = 32 * 1024 * 1024;
+const MAX_PAGE_PIXELS = 16 * 1024 * 1024;
+const MAX_CANVAS_DIMENSION = 8192;
+
+function printScale(width: number, height: number, pageCount: number): number {
+  const pixels = Math.min(MAX_PAGE_PIXELS, Math.max(1, Math.floor(MAX_TOTAL_PIXELS / pageCount)));
+  return Math.min(
+    PRINT_UNITS,
+    Math.sqrt(pixels / (width * height)),
+    pixels / Math.max(width, height),
+    MAX_CANVAS_DIMENSION / width,
+    MAX_CANVAS_DIMENSION / height,
+  );
+}
 
 export interface PrintOptions {
   onProgress?: (done: number, total: number) => void;
@@ -38,6 +54,10 @@ export async function printDocument(
   const container = document.createElement("div");
   container.id = CONTAINER_ID;
   const pageStyle = document.createElement("style");
+  const canvas = document.createElement("canvas");
+  let renderTask: RenderTask | null = null;
+  const cancelRender = () => renderTask?.cancel();
+  signal?.addEventListener("abort", cancelRender, { once: true });
   const urls: string[] = [];
   // One named @page rule per distinct page size, so mixed portrait/landscape documents print correctly.
   const pageRules = new Map<string, string>();
@@ -49,14 +69,18 @@ export async function printDocument(
 
   try {
     const printAnnotationStorage = doc.annotationStorage.print;
-    const canvas = document.createElement("canvas");
     for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
       if (signal?.aborted) {
         cleanup();
         return null;
       }
       const page = await doc.getPage(pageNumber);
+      if (signal?.aborted) {
+        cleanup();
+        return null;
+      }
       const viewport = page.getViewport({ scale: 1 });
+      const scale = printScale(viewport.width, viewport.height, doc.numPages);
       const size = `${viewport.width}pt ${viewport.height}pt`;
       if (!pageRules.has(size)) {
         const name = `openpdf-size-${pageRules.size + 1}`;
@@ -68,22 +92,24 @@ export async function printDocument(
           `@page ${name} { size: ${size}; margin: 0; }
 `;
       }
-      canvas.width = Math.floor(viewport.width * PRINT_UNITS);
-      canvas.height = Math.floor(viewport.height * PRINT_UNITS);
+      canvas.width = Math.max(1, Math.floor(viewport.width * scale));
+      canvas.height = Math.max(1, Math.floor(viewport.height * scale));
       const context = canvas.getContext("2d");
       if (!context) throw new Error("Canvas is not available");
       context.save();
       context.fillStyle = "#ffffff";
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.restore();
-      await page.render({
+      renderTask = page.render({
         canvas,
-        transform: [PRINT_UNITS, 0, 0, PRINT_UNITS, 0, 0],
+        transform: [scale, 0, 0, scale, 0, 0],
         viewport,
         intent: "print",
         annotationMode: AnnotationMode.ENABLE_STORAGE,
         printAnnotationStorage,
-      }).promise;
+      });
+      await renderTask.promise;
+      renderTask = null;
       const url = URL.createObjectURL(await canvasToBlob(canvas));
       urls.push(url);
       const wrapper = document.createElement("div");
@@ -96,7 +122,6 @@ export async function printDocument(
       page.cleanup();
       onProgress?.(pageNumber, doc.numPages);
     }
-    canvas.width = canvas.height = 0;
     if (signal?.aborted) {
       cleanup();
       return null;
@@ -105,10 +130,20 @@ export async function printDocument(
     document.body.append(container);
     return () => {
       window.addEventListener("afterprint", cleanup, { once: true });
-      window.print();
+      try {
+        window.print();
+      } catch (error) {
+        window.removeEventListener("afterprint", cleanup);
+        cleanup();
+        throw error;
+      }
     };
   } catch (error) {
     cleanup();
+    if (signal?.aborted) return null;
     throw error;
+  } finally {
+    signal?.removeEventListener("abort", cancelRender);
+    canvas.width = canvas.height = 0;
   }
 }

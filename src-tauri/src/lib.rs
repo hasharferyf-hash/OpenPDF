@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 
 use tauri::ipc::{InvokeBody, Request, Response};
 
+mod atomic_file;
+
 /// OpenPDF only ever reads and writes PDF files; every path coming from the
 /// webview is checked against this before touching the file system.
 fn is_pdf_path(path: &Path) -> bool {
@@ -59,7 +61,7 @@ fn write_pdf(request: Request<'_>) -> Result<(), String> {
     if !path.is_absolute() || !is_pdf_path(&path) {
         return Err("Only PDF files can be saved".into());
     }
-    std::fs::write(&path, data).map_err(|error| error.to_string())
+    atomic_file::write_atomically(&path, data).map_err(|error| error.to_string())
 }
 
 /// The PDF passed on the command line, e.g. by "Open with" or a double click.

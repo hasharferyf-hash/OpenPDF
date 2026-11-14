@@ -22,7 +22,8 @@ import {
   type OpenedFile,
 } from "./services/files/platform";
 import { printDocument } from "./services/pdf/print";
-import { PasswordCancelled, ViewerController } from "./services/pdf/viewerController";
+import { FileOperations } from "./services/files/operations";
+import { OpenCancelled, PasswordCancelled, ViewerController } from "./services/pdf/viewerController";
 
 interface CurrentFile {
   name: string;
@@ -54,6 +55,7 @@ export default function App() {
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const fileOperations = useRef(new FileOperations());
 
   const i18n = useMemo(() => ({ t: translator(language), language }), [language]);
   const { t } = i18n;
@@ -109,14 +111,21 @@ export default function App() {
   const showError = useCallback((title: string, message: string) => setModal({ kind: "message", title, message }), []);
 
   const openFile = useCallback(
-    async (source: OpenedFile | (() => Promise<OpenedFile | null>)) => {
+    (source: OpenedFile | (() => Promise<OpenedFile | null>)) => fileOperations.current.run(async () => {
       const ctrl = latest.current.controller;
       const translate = latest.current.t;
-      if (!ctrl || !(await confirmDiscard())) return;
+      if (!ctrl || latest.current.modal) return;
       setLoading(true);
       try {
         const opened = typeof source === "function" ? await source() : source;
         if (!opened) return;
+        if (ctrl.getState().presenting) {
+          await setFullscreen(false);
+          ctrl.setPresenting(false);
+        }
+        // Check after the file picker/read and fullscreen transition: the old
+        // document may have been edited while those operations were pending.
+        if (!(await confirmDiscard())) return;
         setFindOpen(false);
         setFile(null);
         await ctrl.open(opened.data, (wrong) =>
@@ -135,18 +144,19 @@ export default function App() {
         setFile({ name: opened.name, path: opened.path });
         ctrl.focus();
       } catch (error) {
-        if (error instanceof PasswordCancelled || (error as Error)?.message?.includes("Password prompt cancelled")) return;
+        if (error instanceof OpenCancelled || error instanceof PasswordCancelled || (error as Error)?.message?.includes("Password prompt cancelled")) return;
         console.error(error);
         showError(translate("errorTitle"), translate("errorInvalid"));
       } finally {
         setLoading(false);
       }
-    },
+    }),
     [confirmDiscard, showError],
   );
 
   const openPath = useCallback(
     (path: string) => {
+      if (fileOperations.current.busy || latest.current.modal) return;
       if (!isPdfName(path)) {
         showError(latest.current.t("errorTitle"), latest.current.t("errorNotPdf"));
         return;
@@ -158,21 +168,21 @@ export default function App() {
 
   const openPicker = useCallback(() => void openFile(pickPdf), [openFile]);
 
-  const save = useCallback(async () => {
-    if (!controller?.document || !file) return;
+  const save = useCallback(() => fileOperations.current.run(async () => {
+    if (!controller?.document || !file || latest.current.modal) return;
     try {
-      const bytes = await controller.getBytes();
-      const saved = await savePdf(file.path ?? file.name, bytes);
+      const snapshot = await controller.prepareSave();
+      const saved = await savePdf(file.path ?? file.name, snapshot.data);
       if (!saved) return;
-      controller.markSaved();
+      controller.markSaved(snapshot);
       setToast(t("saved", { name: baseName(saved) }));
     } catch (error) {
       console.error(error);
       showError(t("download"), t("errorSave"));
     }
-  }, [controller, file, showError, t]);
+  }), [controller, file, showError, t]);
 
-  const print = useCallback(async () => {
+  const print = useCallback(() => fileOperations.current.run(async () => {
     const doc = controller?.document;
     if (!doc || latest.current.modal) return;
     controller.commitEdits();
@@ -185,12 +195,15 @@ export default function App() {
         onProgress: (done) => setModal((current) => (current?.kind === "print" ? { ...current, done } : current)),
       });
       setModal((current) => (current?.kind === "print" ? null : current));
-      if (ready) setTimeout(ready, 50);
+      if (ready) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        ready();
+      }
     } catch (error) {
       console.error(error);
       showError(t("print"), t("errorPrint"));
     }
-  }, [controller, showError, t]);
+  }), [controller, showError, t]);
 
   const setPresenting = useCallback(
     (enabled: boolean) => {
@@ -235,6 +248,11 @@ export default function App() {
       void import("@tauri-apps/api/window")
         .then(({ getCurrentWindow }) =>
           getCurrentWindow().onCloseRequested(async (event) => {
+            // In particular, don't close the window while a save is pending.
+            if (fileOperations.current.busy || latest.current.modal) {
+              event.preventDefault();
+              return;
+            }
             if (!(await confirmDiscard())) event.preventDefault();
           }),
         )
