@@ -57,7 +57,7 @@ jobs:
         with:
           tag_name: main-build-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
-          name: OpenPDF main build #${{ github.run_number }}
+          name: 'OpenPDF main build #${{ github.run_number }}'
           prerelease: true
           make_latest: false
           generate_release_notes: true
