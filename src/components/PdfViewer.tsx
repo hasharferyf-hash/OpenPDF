@@ -83,7 +83,6 @@ function PdfPage({ document, pageNumber, scale, onVisible }: PdfPageProps) {
     canvas.width = Math.ceil(viewport.width * pixelRatio);
     canvas.height = Math.ceil(viewport.height * pixelRatio);
     renderTask = page.render({
-      canvas,
       canvasContext: context,
       viewport,
       transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0],
