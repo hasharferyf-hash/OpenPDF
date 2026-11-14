@@ -26,10 +26,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "nsis",
-      "msi"
-    ],
+    "targets": ["nsis", "msi"],
+    "icon": ["icons/icon.ico"],
     "category": "Productivity",
     "shortDescription": "A clean PDF viewer",
     "longDescription": "A lightweight, local-first PDF viewer for Windows."
