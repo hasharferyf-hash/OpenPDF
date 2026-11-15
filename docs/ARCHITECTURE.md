@@ -78,7 +78,7 @@ Cold and warm launches resolve all PDF arguments against the launching process's
 
 Multi-file reads preserve selection order and isolate read failures: readable files open in separate tabs and a localized message names the unreadable files. Missing startup paths reach this same error handling instead of being silently filtered out.
 
-The current Tauri configuration builds NSIS and MSI installers. Tauri on Windows requires Microsoft Edge WebView2 Runtime. The repository does not currently configure an explicitly bundled offline WebView2 Runtime; installation behavior on a machine without the runtime depends on Tauri's installer bootstrap configuration/defaults and may require internet access. If fully offline installation is a requirement, configure and test Tauri's offlineInstaller WebView2 install mode and account for the substantially larger installer.
+CI publishes separate Windows packages: standard NSIS/MSI installers, an NSIS installer including Microsoft's offline WebView2 installer, and a portable ZIP. The standard installers download WebView2 only when missing. The full installer is explicitly named `setup-with-WebView2` and does not replace the smaller standard packages. Portable mode stores browser data beside the executable and can use a separately supplied WebView2 Fixed Version runtime. Installation without a preinstalled runtime still requires verification on a clean Windows system.
 
 The installer and file-association behavior must be verified on clean Windows 10 and Windows 11 systems, including install, upgrade, uninstall, Open with, and default-app selection.
 

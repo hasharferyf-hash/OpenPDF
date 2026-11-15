@@ -2,10 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { MessageDialog } from "./components/Dialogs";
 import { DocumentView } from "./components/DocumentView";
 import { TabStrip } from "./components/TabStrip";
-import { I18nContext, initialLanguage, storeLanguage, translator, type Language } from "./i18n";
+import {
+  I18nContext,
+  initialLanguage,
+  initialTheme,
+  storeLanguage,
+  storeTheme,
+  translator,
+  type Language,
+  type ThemePreference,
+} from "./i18n";
 import { FileOperations } from "./services/files/operations";
 import { readBatch, type FileBatch } from "./services/files/batch";
-import { fromFiles, isDesktop, isPdfName, onNativeFileDrop, pickPdfs, readPaths, startupFilePaths } from "./services/files/platform";
+import { fromFiles, isDesktop, isPdfName, onNativeFileDrop, pickPdfs, readPaths, setNativeTheme, startupFilePaths } from "./services/files/platform";
 import { DocumentTabs, type DocumentHandle, type DocumentStatus } from "./services/tabs";
 
 export default function App() {
@@ -13,6 +22,7 @@ export default function App() {
   const [operations] = useState(() => new FileOperations());
   const { tabs, activeId } = useSyncExternalStore(documents.subscribe, documents.getSnapshot);
   const [language, setLanguage] = useState<Language>(initialLanguage);
+  const [theme, setTheme] = useState<ThemePreference>(initialTheme);
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const startupHandled = useRef(false);
@@ -191,6 +201,23 @@ export default function App() {
     return next;
   }), []);
 
+  // Resolve "system" through the OS setting and keep following it while the app runs.
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      document.documentElement.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme;
+    };
+    apply();
+    void setNativeTheme(theme).catch(() => undefined);
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [theme]);
+
+  const changeTheme = useCallback((next: ThemePreference) => {
+    setTheme(next);
+    storeTheme(next);
+  }, []);
+
   return (
     <I18nContext.Provider value={i18n}>
       <div className="application" onDragOver={isDesktop ? undefined : (event) => {
@@ -210,7 +237,8 @@ export default function App() {
           <section key={tab.id} id={`document-panel-${tab.id}`} className="document-tab-panel"
             role="tabpanel" aria-labelledby={`document-tab-${tab.id}`} hidden={tab.id !== activeId}>
             <DocumentView id={tab.id} active={tab.id === activeId} language={language} operations={operations}
-              onOpen={openPicker} onToggleLanguage={toggleLanguage} onReady={register} onStatus={updateStatus} />
+              onOpen={openPicker} onToggleLanguage={toggleLanguage}
+              theme={theme} onThemeChange={changeTheme} onReady={register} onStatus={updateStatus} />
           </section>
         ))}
         {dragging && <div className="drop-overlay"><div>{i18n.t("dropHere")}</div></div>}

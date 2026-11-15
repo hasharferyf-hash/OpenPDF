@@ -25,6 +25,7 @@ const PATHS = {
   info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.01",
   present: "M3 5h18v11H3zM12 16v4M8 20h8",
   comment: "M4 5h16v11H9l-5 4z",
+  theme: "M12 3a9 9 0 1 0 0 18zM12 3a9 9 0 0 1 0 18",
   globe: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18",
   thumbnails: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
   outline: "M4 6h.01M8 6h12M4 12h.01M8 12h12M4 18h.01M8 18h12",

@@ -74,7 +74,7 @@ async function app(picker = async () => [pdf("one.pdf")], options = {}) {
     "./components/DocumentView": { DocumentView: "DocumentView" },
     "./components/TabStrip": { TabStrip: "TabStrip" },
     "./components/Dialogs": { MessageDialog: "MessageDialog" },
-    "./i18n": { I18nContext: { Provider: "Provider" }, initialLanguage: () => "en", storeLanguage() {}, translator: () => (key, values) => key + (values ? `: ${values.names}` : "") },
+    "./i18n": { I18nContext: { Provider: "Provider" }, initialLanguage: () => "en", storeLanguage() {}, initialTheme: () => "system", storeTheme() {}, translator: () => (key, values) => key + (values ? `: ${values.names}` : "") },
     "./services/files/operations": { FileOperations },
     "./services/tabs": { DocumentTabs },
     "./services/files/batch": { readBatch },
@@ -85,6 +85,7 @@ async function app(picker = async () => [pdf("one.pdf")], options = {}) {
       pickPdfs: async () => { const result = await picker(); return Array.isArray(result) ? { files: result, failed: [] } : result; },
       readPaths: (paths) => readBatch(paths, readPath, (path) => path.split(/[\\/]/).pop()),
       startupFilePaths: async () => options.startup ?? [],
+      setNativeTheme: async () => {},
     },
   }, { window: {
     addEventListener: (name, listener) => events.set(name, listener),

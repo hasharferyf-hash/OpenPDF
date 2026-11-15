@@ -98,6 +98,13 @@ export async function setWindowTitle(title: string): Promise<void> {
   await getCurrentWindow().setTitle(title);
 }
 
+/** Matches the native title bar to the app theme; null follows Windows. */
+export async function setNativeTheme(theme: "system" | "light" | "dark"): Promise<void> {
+  if (!isDesktop) return;
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  await getCurrentWindow().setTheme(theme === "system" ? null : theme);
+}
+
 export async function setFullscreen(enabled: boolean): Promise<void> {
   if (isDesktop) {
     const { getCurrentWindow } = await import("@tauri-apps/api/window");

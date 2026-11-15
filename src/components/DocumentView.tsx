@@ -5,7 +5,7 @@ import { FindBar } from "./FindBar";
 import { Icon } from "./Icon";
 import { Sidebar } from "./Sidebar";
 import { Toolbar } from "./Toolbar";
-import { I18nContext, translator, type Language } from "../i18n";
+import { I18nContext, translator, type Language, type ThemePreference } from "../i18n";
 import {
   baseName,
   isDesktop,
@@ -27,6 +27,8 @@ interface DocumentViewProps {
   operations: FileOperations;
   onOpen(): void;
   onToggleLanguage(): void;
+  theme: ThemePreference;
+  onThemeChange(theme: ThemePreference): void;
   onReady(id: number, handle: DocumentHandle): void;
   onStatus(id: number, status: DocumentStatus): void;
 }
@@ -387,6 +389,8 @@ export function DocumentView(props: DocumentViewProps) {
             onPresent={() => setPresenting(true)}
             onToggleAnnotations={() => setAnnotationsVisible((visible) => !visible)}
             onToggleLanguage={props.onToggleLanguage}
+            theme={props.theme}
+            onThemeChange={props.onThemeChange}
           />
         )}
         {controller && state && !presenting && <EditorBar controller={controller} state={state} />}

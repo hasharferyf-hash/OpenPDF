@@ -49,6 +49,12 @@
         "mimeType": "application/pdf",
         "role": "Viewer"
       }
-    ]
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    }
   }
 }

@@ -59,3 +59,6 @@ public/dev-*.pdf
 
 # Local agent/editor state
 .claude/
+
+# Release packaging output (CI)
+dist-release/
