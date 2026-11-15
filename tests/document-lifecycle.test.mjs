@@ -173,6 +173,18 @@ test("file operations exclude overlapping opens/saves before the first await and
   assert.equal(secondRan, true);
 });
 
+test("file operation subscribers are notified when the queue can be flushed", async () => {
+  const { FileOperations } = await loadModule("src/services/files/operations.ts");
+  const operations = new FileOperations();
+  const states = [];
+  const unsubscribe = operations.subscribe(() => states.push(operations.busy));
+  await operations.run(async () => {
+    assert.equal(operations.busy, true);
+  });
+  unsubscribe();
+  assert.deepEqual(states, [true, false]);
+});
+
 test("switching inactive suspends a tab's editor shortcuts without closing its document", async () => {
   const fixture = await viewer();
   const doc = document();
