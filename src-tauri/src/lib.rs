@@ -1,8 +1,13 @@
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}, sync::Mutex};
+
+use tauri::{Emitter, Manager, State};
 
 use tauri::ipc::{InvokeBody, Request, Response};
 
 mod atomic_file;
+
+#[derive(Default)]
+struct PendingOpenFiles(Mutex<Vec<String>>);
 
 /// OpenPDF only ever reads and writes PDF files; every path coming from the
 /// webview is checked against this before touching the file system.
@@ -32,6 +37,26 @@ fn percent_decode(input: &str) -> Result<String, String> {
         }
     }
     String::from_utf8(out).map_err(|_| "Invalid path encoding".to_string())
+}
+
+
+/// Resolves PDF paths forwarded by a second launch. The first argument is the
+/// executable path; subsequent relative paths are resolved against that launch's cwd.
+fn collect_pdf_paths(args: &[String], cwd: &Path) -> Vec<String> {
+    args.iter()
+        .skip(1)
+        .filter_map(|arg| {
+            let path = PathBuf::from(arg);
+            let path = if path.is_absolute() { path } else { cwd.join(path) };
+            is_pdf_path(&path).then(|| path.to_string_lossy().into_owned())
+        })
+        .collect()
+}
+
+/// Drains file-open requests received before the frontend event listener was ready.
+#[tauri::command]
+fn take_pending_open_files(state: State<'_, PendingOpenFiles>) -> Vec<String> {
+    std::mem::take(&mut *state.0.lock().unwrap())
 }
 
 /// Returns the raw bytes of a local PDF file.
@@ -77,9 +102,21 @@ fn startup_file() -> Option<String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(PendingOpenFiles::default())
+        // Keep this first: it must intercept later launches before other plugins initialize.
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            let paths = collect_pdf_paths(&args, Path::new(&cwd));
+            if !paths.is_empty() {
+                app.state::<PendingOpenFiles>().0.lock().unwrap().extend(paths);
+                let _ = app.emit("open-pdf-files", ());
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![read_pdf, write_pdf, startup_file])
+        .invoke_handler(tauri::generate_handler![read_pdf, write_pdf, startup_file, take_pending_open_files])
         .run(tauri::generate_context!())
         .expect("error while running OpenPDF");
 }
