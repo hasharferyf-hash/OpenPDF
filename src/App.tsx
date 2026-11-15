@@ -73,7 +73,7 @@ export default function App() {
       stopOperations();
       stopDocuments();
     };
-  }, [blocked, documents, operations, openPaths]);
+  }, [blocked, documents, message, operations, openPaths]);
 
   const activate = useCallback((id: number) => operations.run(async () => {
     if (blocked() || id === documents.active.id) return;
