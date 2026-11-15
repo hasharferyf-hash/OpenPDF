@@ -1,8 +1,13 @@
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}, sync::Mutex};
+
+use tauri::{Emitter, Manager, State};
 
 use tauri::ipc::{InvokeBody, Request, Response};
 
 mod atomic_file;
+
+#[derive(Default)]
+struct PendingOpenFiles(Mutex<Vec<String>>);
 
 /// OpenPDF only ever reads and writes PDF files; every path coming from the
 /// webview is checked against this before touching the file system.
@@ -32,6 +37,25 @@ fn percent_decode(input: &str) -> Result<String, String> {
         }
     }
     String::from_utf8(out).map_err(|_| "Invalid path encoding".to_string())
+}
+
+
+/// Resolves PDF paths forwarded by a second launch. The first argument is the
+/// executable path; subsequent relative paths are resolved against that launch's cwd.
+fn collect_pdf_paths(args: &[String], cwd: &Path) -> Vec<String> {
+    args.iter()
+        .filter_map(|arg| {
+            let path = PathBuf::from(arg);
+            let path = if path.is_absolute() { path } else { cwd.join(path) };
+            is_pdf_path(&path).then(|| path.to_string_lossy().into_owned())
+        })
+        .collect()
+}
+
+/// Drains file-open requests received before the frontend event listener was ready.
+#[tauri::command]
+fn take_pending_open_files(state: State<'_, PendingOpenFiles>) -> Vec<String> {
+    std::mem::take(&mut *state.0.lock().unwrap())
 }
 
 /// Returns the raw bytes of a local PDF file.
@@ -76,10 +100,26 @@ fn startup_file() -> Option<String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default().manage(PendingOpenFiles::default());
+
+    // Keep this first among plugins: it must intercept later launches before
+    // other plugins initialize. The plugin is desktop-only.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+        let paths = collect_pdf_paths(&args, Path::new(&cwd));
+        if !paths.is_empty() {
+            app.state::<PendingOpenFiles>().0.lock().unwrap().extend(paths);
+            let _ = app.emit("open-pdf-files", ());
+        }
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.set_focus();
+        }
+    }));
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![read_pdf, write_pdf, startup_file])
+        .invoke_handler(tauri::generate_handler![read_pdf, write_pdf, startup_file, take_pending_open_files])
         .run(tauri::generate_context!())
         .expect("error while running OpenPDF");
 }
@@ -94,6 +134,24 @@ mod tests {
         assert_eq!(percent_decode("%D7%A9%D7%9C%D7%95%D7%9D.pdf").unwrap(), "שלום.pdf");
         assert!(percent_decode("bad%2").is_err());
         assert!(percent_decode("bad%zz").is_err());
+    }
+
+    #[test]
+    fn collects_only_pdf_arguments_and_resolves_relative_paths() {
+        let cwd = Path::new(r"C:\Users\test");
+        let args = vec![
+            r"C:\Program Files\OpenPDF\OpenPDF.exe".to_string(),
+            r"docs\one.pdf".to_string(),
+            r"C:\docs\two.PDF".to_string(),
+            r"notes.txt".to_string(),
+        ];
+        assert_eq!(
+            collect_pdf_paths(&args, cwd),
+            vec![
+                r"C:\Users\test\docs\one.pdf".to_string(),
+                r"C:\docs\two.PDF".to_string(),
+            ]
+        );
     }
 
     #[test]

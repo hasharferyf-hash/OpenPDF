@@ -143,7 +143,6 @@ export function DocumentView(props: DocumentViewProps) {
       setLoadError(null);
       try {
         setFindOpen(false);
-        setFile({ name: opened.name, path: opened.path });
         await ctrl.open(opened.data, (wrong) =>
           new Promise((resolve) =>
             setModal({
@@ -157,8 +156,13 @@ export function DocumentView(props: DocumentViewProps) {
             }),
           ),
         );
+        // Publish file metadata only after PDF.js has successfully loaded the document.
+        setFile({ name: opened.name, path: opened.path });
         if (latest.current.active) ctrl.focus();
       } catch (error) {
+        // ViewerController closes the previous document before starting a new load.
+        // Do not leave its old filename (or the failed new filename) attached to an empty tab.
+        setFile(null);
         if (error instanceof OpenCancelled || error instanceof PasswordCancelled || (error as Error)?.message?.includes("Password prompt cancelled")) return;
         console.error(error);
         setLoadError(translate("errorInvalid"));

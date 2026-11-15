@@ -79,8 +79,10 @@ async function app(picker = async () => [pdf("one.pdf")]) {
     removeEventListener: (name) => events.delete(name),
   } });
   render();
-  // Mount the window keyboard effect; file picker/startup native APIs are fakes.
-  effects[2]();
+  // Mount the pending-open subscription and keyboard effect. The native startup
+  // effect is intentionally not mounted in this unit test.
+  effects[1]();
+  effects[3]();
   const find = (type) => findAll(type, tree)[0];
   return { calls, handles, render, find, events, open: () => find("DocumentView").props.onOpen() };
 }
