@@ -2,6 +2,7 @@
 // and two narrow Rust commands); in a plain browser (used during development)
 // it falls back to a file input and a blob download.
 import { invoke } from "@tauri-apps/api/core";
+import { readBatch, type FileBatch } from "./batch";
 
 export interface OpenedFile {
   name: string;
@@ -23,7 +24,10 @@ export async function readPath(path: string): Promise<OpenedFile> {
   return { name: baseName(path), path, data: new Uint8Array(buffer) };
 }
 
-function pickWithInput(multiple = false): Promise<OpenedFile[]> {
+export const readPaths = (paths: readonly string[]) => readBatch(paths, readPath, baseName);
+export const fromFiles = (files: readonly File[]) => readBatch(files, fromFile, (file) => file.name);
+
+function pickWithInput(multiple = false): Promise<FileBatch> {
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
@@ -31,10 +35,10 @@ function pickWithInput(multiple = false): Promise<OpenedFile[]> {
     input.multiple = multiple;
     input.onchange = async () => {
       try {
-        resolve(await Promise.all(Array.from(input.files ?? []).map(fromFile)));
+        resolve(await fromFiles(Array.from(input.files ?? [])));
       } catch (error) { reject(error); }
     };
-    input.oncancel = () => resolve([]);
+    input.oncancel = () => resolve({ files: [], failed: [] });
     input.click();
   });
 }
@@ -44,18 +48,22 @@ export async function fromFile(file: File): Promise<OpenedFile> {
 }
 
 export async function pickPdf(): Promise<OpenedFile | null> {
-  if (!isDesktop) return (await pickWithInput())[0] ?? null;
+  if (!isDesktop) {
+    const batch = await pickWithInput();
+    if (batch.failed.length) throw new Error(`Could not read ${batch.failed.join(", ")}`);
+    return batch.files[0] ?? null;
+  }
   const { open } = await import("@tauri-apps/plugin-dialog");
   const path = await open({ multiple: false, directory: false, filters: PDF_FILTER });
   return typeof path === "string" ? readPath(path) : null;
 }
 
-export async function pickPdfs(): Promise<OpenedFile[]> {
+export async function pickPdfs(): Promise<FileBatch> {
   if (!isDesktop) return pickWithInput(true);
   const { open } = await import("@tauri-apps/plugin-dialog");
   const selected = await open({ multiple: true, directory: false, filters: PDF_FILTER });
   const paths = typeof selected === "string" ? [selected] : selected ?? [];
-  return Promise.all(paths.map(readPath));
+  return readPaths(paths);
 }
 
 /** Asks where to save and writes the bytes. Resolves to the saved path/name, or null if cancelled. */
@@ -77,10 +85,10 @@ export async function savePdf(suggestedPath: string, data: Uint8Array): Promise<
   return path;
 }
 
-/** The PDF passed on the command line (e.g. via "Open with"), if any. */
-export async function startupFilePath(): Promise<string | null> {
-  if (!isDesktop) return null;
-  return invoke<string | null>("startup_file");
+/** All PDFs passed on the command line (e.g. via "Open with"). */
+export async function startupFilePaths(): Promise<string[]> {
+  if (!isDesktop) return [];
+  return invoke<string[]>("startup_files");
 }
 
 export async function setWindowTitle(title: string): Promise<void> {

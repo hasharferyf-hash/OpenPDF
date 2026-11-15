@@ -5,8 +5,12 @@ import { loadModule } from "./load-module.mjs";
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const pdf = (name) => ({ name, data: new Uint8Array([1]) });
 
-async function app(picker = async () => [pdf("one.pdf")]) {
+async function app(picker = async () => [pdf("one.pdf")], options = {}) {
   const hooks = [], effects = [], calls = [], handles = new Map(), events = new Map();
+  const metadata = [];
+  let drop;
+  const { readBatch } = await loadModule("src/services/files/batch.ts");
+  const readPath = options.readPath ?? (async (path) => pdf(path.split(/[\\/]/).pop()));
   const { FileOperations } = await loadModule("src/services/files/operations.ts");
   const { DocumentTabs } = await loadModule("src/services/tabs.ts");
   let cursor = 0, tree, subscribed = false, scheduled = false;
@@ -36,8 +40,11 @@ async function app(picker = async () => [pdf("one.pdf")]) {
         name: null, dirty: false, presenting: false, allowClose: true,
         async load(file) {
           calls.push(["load", id, file.name]); this.name = file.name;
-          onStatus(id, { name: this.name, modified: this.dirty, presenting: this.presenting, modal: false });
+          const update = () => onStatus(id, { name: this.name, modified: this.dirty, presenting: this.presenting, modal: false });
+          if (options.deferMetadata) metadata.push(update);
+          else update();
         },
+        hasDocument() { return this.name !== null; },
         hasUnsavedChanges() { return this.dirty; },
         async confirmClose() { calls.push(["confirm", id]); return this.allowClose; },
         async exitPresentation() { calls.push(["exitPresentation", id]); this.presenting = false; },
@@ -67,24 +74,30 @@ async function app(picker = async () => [pdf("one.pdf")]) {
     "./components/DocumentView": { DocumentView: "DocumentView" },
     "./components/TabStrip": { TabStrip: "TabStrip" },
     "./components/Dialogs": { MessageDialog: "MessageDialog" },
-    "./i18n": { I18nContext: { Provider: "Provider" }, initialLanguage: () => "en", storeLanguage() {}, initialTheme: () => "system", storeTheme() {}, translator: () => (key) => key },
+    "./i18n": { I18nContext: { Provider: "Provider" }, initialLanguage: () => "en", storeLanguage() {}, initialTheme: () => "system", storeTheme() {}, translator: () => (key, values) => key + (values ? `: ${values.names}` : "") },
     "./services/files/operations": { FileOperations },
     "./services/tabs": { DocumentTabs },
+    "./services/files/batch": { readBatch },
     "./services/files/platform": {
-      fromFile: async (file) => file, isDesktop: false, isPdfName: (name) => name.endsWith(".pdf"),
-      onNativeFileDrop: async () => () => {}, pickPdfs: picker, readPath() {}, setNativeTheme: async () => {}, startupFilePath: async () => null,
+      fromFiles: (files) => readBatch(files, async (file) => ({ name: file.name, data: new Uint8Array(await file.arrayBuffer()) }), (file) => file.name),
+      isDesktop: false, isPdfName: (name) => name.toLowerCase().endsWith(".pdf"),
+      onNativeFileDrop: async (handlers) => { drop = handlers.onDrop; return () => {}; },
+      pickPdfs: async () => { const result = await picker(); return Array.isArray(result) ? { files: result, failed: [] } : result; },
+      readPaths: (paths) => readBatch(paths, readPath, (path) => path.split(/[\\/]/).pop()),
+      startupFilePaths: async () => options.startup ?? [],
+      setNativeTheme: async () => {},
     },
   }, { window: {
     addEventListener: (name, listener) => events.set(name, listener),
     removeEventListener: (name) => events.delete(name),
   } });
   render();
-  // Mount the pending-open subscription and keyboard effect. The native startup
-  // effect is intentionally not mounted in this unit test.
+  // Mount queue, startup/drop routing, and keyboard effects at the app boundary.
   effects[1]();
+  effects[2]();
   effects[3]();
   const find = (type) => findAll(type, tree)[0];
-  return { calls, handles, render, find, events, open: () => find("DocumentView").props.onOpen() };
+  return { calls, handles, render, find, events, drop: (paths) => drop(paths), flushMetadata: () => metadata.splice(0).forEach((update) => update()), open: () => find("DocumentView").props.onOpen() };
 }
 
 test("opening multiple files creates independent tabs and reuses the initial blank", async () => {
@@ -170,4 +183,48 @@ test("closing the last tab leaves a new empty tab", async () => {
   assert.equal(tabs.length, 1);
   assert.equal(tabs[0].name, null);
   assert.notEqual(activeId, id);
+});
+
+test("a queued shell open cannot replace a loaded tab before React publishes its filename", async () => {
+  let resolve;
+  const fixture = await app(() => new Promise((done) => { resolve = done; }), { deferMetadata: true });
+  fixture.open();
+  fixture.drop(["second.pdf"]);
+  resolve([pdf("first.pdf")]);
+  await tick();
+  const loads = fixture.calls.filter(([name]) => name === "load");
+  assert.deepEqual(loads.map((entry) => entry[2]), ["first.pdf", "second.pdf"]);
+  assert.notEqual(loads[0][1], loads[1][1]);
+  assert.equal(fixture.handles.get(loads[0][1]).name, "first.pdf");
+  fixture.flushMetadata(); await tick();
+  assert.deepEqual(Array.from(fixture.find("TabStrip").props.tabs, (tab) => tab.name), ["first.pdf", "second.pdf"]);
+});
+
+test("a failed read in a queued group preserves other files and names the failure", async () => {
+  let resolve;
+  const fixture = await app(() => new Promise((done) => { resolve = done; }), {
+    readPath: async (path) => { if (path === "missing.pdf") throw new Error("missing"); return pdf(path); },
+  });
+  fixture.open();
+  fixture.drop(["two.pdf", "missing.pdf", "three.pdf"]);
+  resolve([pdf("one.pdf")]); await tick(); fixture.render();
+  assert.deepEqual(Array.from(fixture.find("TabStrip").props.tabs, (tab) => tab.name), ["one.pdf", "two.pdf", "three.pdf"]);
+  assert.equal(fixture.find("MessageDialog").props.message, "errorReadFiles: missing.pdf");
+});
+
+test("cold startup opens every supplied PDF and preserves their order", async () => {
+  const fixture = await app(undefined, { startup: ["one.pdf", "שלום two.PDF", "three.pdf"] });
+  await tick();
+  assert.deepEqual(Array.from(fixture.find("TabStrip").props.tabs, (tab) => tab.name), ["one.pdf", "שלום two.PDF", "three.pdf"]);
+});
+
+test("browser drop opens readable PDFs even when the first file cannot be read", async () => {
+  const fixture = await app();
+  fixture.find("div").props.onDrop({ preventDefault() {}, dataTransfer: { files: [
+    { name: "bad.pdf", arrayBuffer: async () => { throw new Error("unreadable"); } },
+    { name: "good.pdf", arrayBuffer: async () => new ArrayBuffer(1) },
+  ] } });
+  await tick(); fixture.render();
+  assert.deepEqual(Array.from(fixture.find("TabStrip").props.tabs, (tab) => tab.name), ["good.pdf"]);
+  assert.equal(fixture.find("MessageDialog").props.message, "errorReadFiles: bad.pdf");
 });

@@ -31,6 +31,10 @@ Use disposable test PDFs: a small text PDF, a multi-page PDF, a large/scanned PD
 - [ ] Expected: each PDF opens in its own tab in the existing window.
 - [ ] Repeat with paths containing spaces and non-ASCII characters.
 - [ ] Repeat when OpenPDF is busy opening or saving another document; verify requests are not silently lost.
+- [ ] Minimize OpenPDF, then launch another PDF; verify the existing window is restored and focused.
+- [ ] Close OpenPDF, then launch it once with multiple PDF arguments; verify every document opens in argument order.
+- [ ] Include a missing/unreadable PDF between valid files; verify valid files still open and the error names only failed reads.
+- [ ] Queue another PDF while the first picker/load is pending; verify it creates a new tab and preserves the first document.
 
 ## Tabs, document lifecycle, and editing
 

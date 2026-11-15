@@ -40,13 +40,18 @@ fn percent_decode(input: &str) -> Result<String, String> {
 }
 
 
-/// Resolves PDF paths forwarded by a second launch. The first argument is the
+/// Resolves PDF paths from either launch. The first argument is the
 /// executable path; subsequent relative paths are resolved against that launch's cwd.
-fn collect_pdf_paths(args: &[String], cwd: &Path) -> Vec<String> {
-    args.iter()
+fn collect_pdf_paths<I, S>(args: I, cwd: &Path) -> Vec<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<Path>,
+{
+    args.into_iter()
+        .skip(1)
         .filter_map(|arg| {
-            let path = PathBuf::from(arg);
-            let path = if path.is_absolute() { path } else { cwd.join(path) };
+            let path = arg.as_ref();
+            let path = if path.is_absolute() { path.to_path_buf() } else { cwd.join(path) };
             is_pdf_path(&path).then(|| path.to_string_lossy().into_owned())
         })
         .collect()
@@ -88,14 +93,12 @@ fn write_pdf(request: Request<'_>) -> Result<(), String> {
     atomic_file::write_atomically(&path, data).map_err(|error| error.to_string())
 }
 
-/// The PDF passed on the command line, e.g. by "Open with" or a double click.
+/// All PDFs passed on the command line, including missing files so the UI can
+/// report individual read failures while opening the remaining documents.
 #[tauri::command]
-fn startup_file() -> Option<String> {
-    std::env::args_os()
-        .skip(1)
-        .map(PathBuf::from)
-        .find(|path| is_pdf_path(path) && path.is_file())
-        .and_then(|path| path.into_os_string().into_string().ok())
+fn startup_files() -> Vec<String> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    collect_pdf_paths(std::env::args_os(), &cwd)
 }
 
 /// Marker file shipped in the portable ZIP. When it sits next to the executable,
@@ -192,6 +195,7 @@ pub fn run() {
             let _ = app.emit("open-pdf-files", ());
         }
         if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
             let _ = window.set_focus();
         }
     }));
@@ -199,7 +203,7 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![read_pdf, write_pdf, startup_file, take_pending_open_files])
+        .invoke_handler(tauri::generate_handler![read_pdf, write_pdf, startup_files, take_pending_open_files])
         .run(tauri::generate_context!())
         .expect("error while running OpenPDF");
 }
@@ -218,20 +222,27 @@ mod tests {
 
     #[test]
     fn collects_only_pdf_arguments_and_resolves_relative_paths() {
-        let cwd = Path::new(r"C:\Users\test");
+        let cwd = std::env::temp_dir().join("OpenPDF routing tests");
+        let absolute = cwd.join("שלום two.PDF");
         let args = vec![
-            r"C:\Program Files\OpenPDF\OpenPDF.exe".to_string(),
-            r"docs\one.pdf".to_string(),
-            r"C:\docs\two.PDF".to_string(),
-            r"notes.txt".to_string(),
+            "OpenPDF.exe".to_string(),
+            "one.pdf".to_string(),
+            absolute.to_string_lossy().into_owned(),
+            "notes.txt".to_string(),
+            "missing.pdf".to_string(),
         ];
-        assert_eq!(
-            collect_pdf_paths(&args, cwd),
-            vec![
-                r"C:\Users\test\docs\one.pdf".to_string(),
-                r"C:\docs\two.PDF".to_string(),
-            ]
-        );
+        let expected = vec![cwd.join("one.pdf"), absolute, cwd.join("missing.pdf")];
+        let expected: Vec<String> = expected.iter().map(|path| path.to_string_lossy().into_owned()).collect();
+        // Warm launches supply strings; cold launches supply OS strings.
+        assert_eq!(collect_pdf_paths(&args, &cwd), expected);
+        assert_eq!(collect_pdf_paths(args.iter().map(std::ffi::OsString::from), &cwd), expected);
+    }
+
+    #[test]
+    fn excludes_executable_even_if_its_name_ends_in_pdf() {
+        let cwd = std::env::temp_dir();
+        assert!(collect_pdf_paths(["OpenPDF.pdf"], &cwd).is_empty());
+        assert!(collect_pdf_paths(["OpenPDF.exe", "notes.txt"], &cwd).is_empty());
     }
 
     #[test]

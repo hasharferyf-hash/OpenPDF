@@ -43,7 +43,7 @@ The feature list describes implemented code paths. Individual behaviors, edge ca
   - print.ts: prepares rendered pages for the system print dialog.
 - src/services/files: desktop and browser file-access abstractions. The desktop path uses Tauri commands and native dialogs; browser development falls back to a file input and download.
 - scripts/copy-pdfjs-assets.mjs: copies PDF.js CMaps, fonts, ICC profiles, and WASM resources into the frontend assets at build time.
-- src-tauri/src: native Rust commands, including read_pdf, write_pdf, and startup_file.
+- src-tauri/src: native Rust commands, including read_pdf, write_pdf, and startup_files.
 - src-tauri/capabilities: explicit Tauri permissions.
 - docs: architecture, roadmap, and contributor documentation.
 
@@ -74,9 +74,11 @@ Printing targets 150 DPI for ordinary documents. Raster preparation caps decoded
 
 The Tauri bundle declares a .pdf file association with the application role set to Viewer. Windows remains responsible for presenting the user's available-app/default-app choices; OpenPDF must not silently replace the user's default PDF application.
 
-The application can obtain a PDF path passed at process startup (cold start). Forwarding a file-open request to an already-running OpenPDF process (warm-start/single-instance routing) is not implemented.
+Cold and warm launches resolve all PDF arguments against the launching process's working directory. A second launch forwards paths to the existing instance, restores its minimized window, and focuses it. Native requests wait while another file operation or modal is active. Reusing an empty tab checks the live document controller because React's filename update may arrive after the next queued open starts.
 
-The current Tauri configuration builds NSIS and MSI installers. Tauri on Windows requires Microsoft Edge WebView2 Runtime. The repository does not currently configure an explicitly bundled offline WebView2 Runtime; installation behavior on a machine without the runtime depends on Tauri's installer bootstrap configuration/defaults and may require internet access. If fully offline installation is a requirement, configure and test Tauri's offlineInstaller WebView2 install mode and account for the substantially larger installer.
+Multi-file reads preserve selection order and isolate read failures: readable files open in separate tabs and a localized message names the unreadable files. Missing startup paths reach this same error handling instead of being silently filtered out.
+
+CI publishes separate Windows packages: standard NSIS/MSI installers, an NSIS installer including Microsoft's offline WebView2 installer, and a portable ZIP. The standard installers download WebView2 only when missing. The full installer is explicitly named `setup-with-WebView2` and does not replace the smaller standard packages. Portable mode stores browser data beside the executable and can use a separately supplied WebView2 Fixed Version runtime. Installation without a preinstalled runtime still requires verification on a clean Windows system.
 
 The installer and file-association behavior must be verified on clean Windows 10 and Windows 11 systems, including install, upgrade, uninstall, Open with, and default-app selection.
 
