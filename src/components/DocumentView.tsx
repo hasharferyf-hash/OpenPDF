@@ -179,6 +179,7 @@ export function DocumentView(props: DocumentViewProps) {
     if (!controller) return;
     props.onReady(props.id, {
       load: openFile,
+      hasDocument: () => !!controller.document,
       hasUnsavedChanges: () => controller.hasUnsavedChanges(),
       confirmClose: confirmDiscard,
       async exitPresentation() {

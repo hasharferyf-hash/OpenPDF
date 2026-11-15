@@ -4,7 +4,8 @@ import { DocumentView } from "./components/DocumentView";
 import { TabStrip } from "./components/TabStrip";
 import { I18nContext, initialLanguage, storeLanguage, translator, type Language } from "./i18n";
 import { FileOperations } from "./services/files/operations";
-import { fromFile, isDesktop, isPdfName, onNativeFileDrop, pickPdfs, readPath, startupFilePath, type OpenedFile } from "./services/files/platform";
+import { readBatch, type FileBatch } from "./services/files/batch";
+import { fromFiles, isDesktop, isPdfName, onNativeFileDrop, pickPdfs, readPaths, startupFilePaths } from "./services/files/platform";
 import { DocumentTabs, type DocumentHandle, type DocumentStatus } from "./services/tabs";
 
 export default function App() {
@@ -29,18 +30,21 @@ export default function App() {
   const register = useCallback((id: number, handle: DocumentHandle) => documents.register(id, handle), [documents]);
   const updateStatus = useCallback((id: number, status: DocumentStatus) => documents.update(id, status), [documents]);
 
-  const openFiles = useCallback((source: () => Promise<OpenedFile[]>) => operations.run(async () => {
+  const openFiles = useCallback((source: () => Promise<FileBatch>) => operations.run(async () => {
     if (blocked()) return;
     try {
-      const files = await source();
-      if (!files.length) return;
-      await (await documents.active.ready).exitPresentation();
-      let blank = documents.active.name === null ? documents.active : null;
+      const { files, failed } = await source();
+      const current = documents.active;
+      const handle = await current.ready;
+      if (files.length) await handle.exitPresentation();
+      // React's filename effect can lag behind a completed load and queue flush.
+      let blank = handle.hasDocument() ? null : current;
       for (const file of files) {
         const tab = blank ?? documents.create();
         blank = null;
         await (await tab.ready).load(file);
       }
+      if (failed.length) setMessage(latest.current.t("errorReadFiles", { names: failed.join(", ") }));
     } catch (error) {
       console.error(error);
       setMessage(latest.current.t("errorInvalid"));
@@ -57,7 +61,7 @@ export default function App() {
       pendingOpenPaths.current.push(...pdfs);
       return;
     }
-    void openFiles(() => Promise.all(pdfs.map(readPath)));
+    void openFiles(() => readPaths(pdfs));
   }, [blocked, operations, openFiles]);
 
   useEffect(() => {
@@ -108,15 +112,15 @@ export default function App() {
     const keep = (unlisten: () => void) => disposed ? unlisten() : cleanups.push(unlisten);
     if (!startupHandled.current) {
       startupHandled.current = true;
-      void startupFilePath().then((path) => path && openPaths([path])).catch(console.error);
+      void startupFilePaths().then((paths) => paths.length && openPaths(paths)).catch(console.error);
       if (!isDesktop && import.meta.env.DEV) {
         const names = new URLSearchParams(location.search).getAll("file");
         if (names.length && names.every((name) => /^[\w.-]+$/.test(name))) {
-          void openFiles(() => Promise.all(names.map(async (name) => {
+          void openFiles(() => readBatch(names, async (name) => {
             const response = await fetch(`/${name}`);
             if (!response.ok) throw new Error("Could not load test PDF");
             return { name, data: new Uint8Array(await response.arrayBuffer()) };
-          })));
+          }, (name) => name));
         }
       }
     }
@@ -198,7 +202,7 @@ export default function App() {
         if (blocked() || operations.busy) return;
         const pdfs = Array.from(event.dataTransfer.files).filter((file) => isPdfName(file.name) || file.type === "application/pdf");
         if (!pdfs.length) return setMessage(i18n.t("errorNotPdf"));
-        void openFiles(() => Promise.all(pdfs.map(fromFile)));
+        void openFiles(() => fromFiles(pdfs));
       }}>
         {!documents.active.presenting && <TabStrip tabs={tabs} activeId={activeId}
           onActivate={(id) => void activate(id)} onClose={(id) => void closeTab(id)} onNew={() => void newTab()} />}

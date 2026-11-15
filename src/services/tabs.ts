@@ -2,6 +2,7 @@ import type { OpenedFile } from "./files/platform";
 
 export interface DocumentHandle {
   load(file: OpenedFile): Promise<void>;
+  hasDocument(): boolean;
   hasUnsavedChanges(): boolean;
   confirmClose(): Promise<boolean>;
   exitPresentation(): Promise<void>;
