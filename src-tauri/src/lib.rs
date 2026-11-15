@@ -44,7 +44,6 @@ fn percent_decode(input: &str) -> Result<String, String> {
 /// executable path; subsequent relative paths are resolved against that launch's cwd.
 fn collect_pdf_paths(args: &[String], cwd: &Path) -> Vec<String> {
     args.iter()
-        .skip(1)
         .filter_map(|arg| {
             let path = PathBuf::from(arg);
             let path = if path.is_absolute() { path } else { cwd.join(path) };
@@ -131,6 +130,24 @@ mod tests {
         assert_eq!(percent_decode("%D7%A9%D7%9C%D7%95%D7%9D.pdf").unwrap(), "שלום.pdf");
         assert!(percent_decode("bad%2").is_err());
         assert!(percent_decode("bad%zz").is_err());
+    }
+
+    #[test]
+    fn collects_only_pdf_arguments_and_resolves_relative_paths() {
+        let cwd = Path::new(r"C:\Users\test");
+        let args = vec![
+            r"C:\Program Files\OpenPDF\OpenPDF.exe".to_string(),
+            r"docs\one.pdf".to_string(),
+            r"C:\docs\two.PDF".to_string(),
+            r"notes.txt".to_string(),
+        ];
+        assert_eq!(
+            collect_pdf_paths(&args, cwd),
+            vec![
+                r"C:\Users\test\docs\one.pdf".to_string(),
+                r"C:\docs\two.PDF".to_string(),
+            ]
+        );
     }
 
     #[test]
