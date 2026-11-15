@@ -100,19 +100,23 @@ fn startup_file() -> Option<String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .manage(PendingOpenFiles::default())
-        // Keep this first: it must intercept later launches before other plugins initialize.
-        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
-            let paths = collect_pdf_paths(&args, Path::new(&cwd));
-            if !paths.is_empty() {
-                app.state::<PendingOpenFiles>().0.lock().unwrap().extend(paths);
-                let _ = app.emit("open-pdf-files", ());
-            }
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_focus();
-            }
-        }))
+    let builder = tauri::Builder::default().manage(PendingOpenFiles::default());
+
+    // Keep this first among plugins: it must intercept later launches before
+    // other plugins initialize. The plugin is desktop-only.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+        let paths = collect_pdf_paths(&args, Path::new(&cwd));
+        if !paths.is_empty() {
+            app.state::<PendingOpenFiles>().0.lock().unwrap().extend(paths);
+            let _ = app.emit("open-pdf-files", ());
+        }
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.set_focus();
+        }
+    }));
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![read_pdf, write_pdf, startup_file, take_pending_open_files])
