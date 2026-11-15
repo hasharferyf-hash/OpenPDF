@@ -35,9 +35,9 @@ This roadmap tracks implementation and release readiness. A checked implementati
 ## Phase 3 — Windows integration
 
 - [x] Declare the .pdf file association in the Tauri bundle configuration.
-- [x] Handle a PDF path supplied when the application starts (cold start).
+- [x] Handle all PDF paths supplied when the application starts (cold start).
 - [ ] Verify actual installer registration and Windows Open with / default-app selection on clean Windows 10 and Windows 11 systems.
-- [ ] Forward file-open requests to an already-running instance (warm start / single-instance routing).
+- [x] Forward file-open requests to an already-running instance (warm start / single-instance routing).
 - [ ] Verify install, upgrade, repair, and uninstall behavior.
 - [ ] Decide and implement the required WebView2 installation mode. The current configuration does not explicitly bundle an offline WebView2 Runtime.
 
