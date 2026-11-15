@@ -15,6 +15,7 @@ export default function App() {
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const startupHandled = useRef(false);
+  const pendingOpenPaths = useRef<string[]>([]);
   const i18n = useMemo(() => ({ language, t: translator(language) }), [language]);
   const latest = useRef({ t: i18n.t, message });
   latest.current = { t: i18n.t, message };
@@ -48,11 +49,31 @@ export default function App() {
 
   const openPicker = useCallback(() => void openFiles(pickPdfs), [openFiles]);
   const openPaths = useCallback((paths: string[]) => {
-    if (blocked() || operations.busy) return;
     const pdfs = paths.filter(isPdfName);
     if (!pdfs.length) return setMessage(latest.current.t("errorNotPdf"));
+    // Shell launches can arrive while a save/open dialog or another operation is active.
+    // Queue them rather than draining and silently losing the native request.
+    if (blocked() || operations.busy) {
+      pendingOpenPaths.current.push(...pdfs);
+      return;
+    }
     void openFiles(() => Promise.all(pdfs.map(readPath)));
   }, [blocked, operations, openFiles]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (blocked() || operations.busy || !pendingOpenPaths.current.length) return;
+      const paths = pendingOpenPaths.current.splice(0);
+      openPaths(paths);
+    };
+    const stopOperations = operations.subscribe(flush);
+    const stopDocuments = documents.subscribe(flush);
+    flush();
+    return () => {
+      stopOperations();
+      stopDocuments();
+    };
+  }, [blocked, documents, operations, openPaths]);
 
   const activate = useCallback((id: number) => operations.run(async () => {
     if (blocked() || id === documents.active.id) return;
