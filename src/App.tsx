@@ -101,6 +101,19 @@ export default function App() {
     }
     void onNativeFileDrop({ onHover: setDragging, onDrop: openPaths }).then(keep, console.error);
     if (isDesktop) {
+      // The native single-instance callback queues paths and emits a wake-up event.
+      // Register first, then drain the queue to cover requests arriving during startup.
+      void import("@tauri-apps/api/event").then(async ({ listen }) => {
+        const unlisten = await listen("open-pdf-files", async () => {
+          const { invoke } = await import("@tauri-apps/api/core");
+          const paths = await invoke<string[]>("take_pending_open_files");
+          if (paths.length) openPaths(paths);
+        });
+        keep(unlisten);
+        const { invoke } = await import("@tauri-apps/api/core");
+        const pending = await invoke<string[]>("take_pending_open_files");
+        if (pending.length) openPaths(pending);
+      }).catch(console.error);
       void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
         getCurrentWindow().onCloseRequested((event) => {
           event.preventDefault();
