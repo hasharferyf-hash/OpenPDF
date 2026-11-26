@@ -455,6 +455,33 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "requires the isolated GitHub Actions PDF printer"]
+    fn ci_spools_only_the_selected_pages() {
+        use windows_sys::Win32::Graphics::Gdi::CreateDCW;
+
+        assert_eq!(std::env::var("GITHUB_ACTIONS").as_deref(), Ok("true"));
+        let directory = std::path::PathBuf::from(std::env::var_os("OPENPDF_CI_PRINT_DIR").unwrap());
+        let bytes = std::fs::read(directory.join("snapshot.pdf")).unwrap();
+        let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("pdfium-runtime/bin/pdfium.dll");
+        // A runner-local queue writes straight to a file port. There is no
+        // default-printer lookup or interactive output-file prompt in this test.
+        let name: Vec<u16> = "OpenPDF CI PDF".encode_utf16().chain(Some(0)).collect();
+        let dc = PrinterContext(unsafe { CreateDCW(null(), name.as_ptr(), null(), null()) });
+        assert!(!dc.0.is_null(), "{}", win_error("Could not open the CI PDF printer"));
+        let ranges = [
+            PRINTPAGERANGE { nFromPage: 190, nToPage: 190 },
+            PRINTPAGERANGE { nFromPage: 15, nToPage: 15 },
+        ];
+        let printer = Printer {
+            dc,
+            pages: page_ranges(PD_PAGENUMS, 200, 1, &ranges).unwrap(),
+            source_pages: 200,
+            to_file: false,
+        };
+        printer.print(&runtime, "OpenPDF CI smoke test", &bytes, &AtomicBool::new(false)).unwrap();
+    }
+
+    #[test]
     fn normalizes_ranges_and_keeps_original_page_numbers() {
         let requested = [
             PRINTPAGERANGE { nFromPage: 190, nToPage: 190 },
