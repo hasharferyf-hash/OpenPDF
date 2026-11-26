@@ -291,11 +291,19 @@ impl Printer {
             if cancelled.load(Relaxed) {
                 return Ok(());
             }
-            let page = pdf.page((page_number - 1) as i32)?;
+            let index = (page_number - 1) as i32;
+            let mut page = pdf.page(index)?;
             // Flatten printable annotations and form appearances in the private
             // print document. The source file and viewer's dirty state stay intact.
-            if unsafe { (api.flatten_page)(page.handle, FLAT_PRINT) } == FLATTEN_FAIL {
+            let flattened = unsafe { (api.flatten_page)(page.handle, FLAT_PRINT) };
+            if flattened == FLATTEN_FAIL {
                 return Err(format!("PDFium could not flatten page {page_number} for printing"));
+            }
+            if flattened == FLATTEN_SUCCESS {
+                // Flatten changes the PDF dictionary and content streams. A
+                // loaded page still holds the objects parsed before that change.
+                drop(page);
+                page = pdf.page(index)?;
             }
             let [x, y, width, height, rotation] = fit_page(page.size(), device)?;
             if unsafe { StartPage(dc) } <= 0 {
@@ -353,6 +361,7 @@ type Close = unsafe extern "system" fn(PdfHandle);
 // Values from the pinned PDFium build's fpdf_flatten.h and fpdfview.h.
 const FLAT_PRINT: i32 = 1;
 const FLATTEN_FAIL: i32 = 0;
+const FLATTEN_SUCCESS: i32 = 1;
 const FPDF_PRINTING: i32 = 0x800;
 
 struct Pdfium {
