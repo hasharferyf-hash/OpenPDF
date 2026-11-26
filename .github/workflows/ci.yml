@@ -11,6 +11,69 @@ permissions:
   contents: write
 
 jobs:
+  windows-print-smoke:
+    name: Windows PDF print output
+    # Windows Server 2022 provides the built-in Microsoft Print to PDF driver.
+    runs-on: windows-2022
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+      - run: npm ci
+      - run: npm run build
+      - name: Prepare the PDFium runtime and isolated PDF printer
+        shell: pwsh
+        run: |
+          ./scripts/prepare-pdfium.ps1
+          $output = Join-Path $env:RUNNER_TEMP 'openpdf-print'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          "OPENPDF_CI_PRINT_DIR=$output" >> $env:GITHUB_ENV
+          Start-Service Spooler
+          $driver = Get-PrinterDriver -Name 'Microsoft Print To PDF' -ErrorAction SilentlyContinue
+          if (!$driver) {
+            Enable-WindowsOptionalFeature -Online -FeatureName 'Printing-PrintToPDFServices-Features' -NoRestart | Out-Null
+            Add-PrinterDriver -Name 'Microsoft Print To PDF'
+          }
+          $port = Join-Path $output 'printed.pdf'
+          Add-PrinterPort -Name $port
+          Add-Printer -Name 'OpenPDF CI PDF' -DriverName 'Microsoft Print To PDF' -PortName $port
+      - name: Export an annotated snapshot and spool two pages
+        shell: pwsh
+        run: |
+          node scripts/ci-print-smoke.mjs prepare
+          cargo test --manifest-path src-tauri/Cargo.toml --lib native_print::tests::ci_spools_only_the_selected_pages -- --ignored --exact
+      - name: Verify the page order and visible annotation in the output
+        shell: pwsh
+        run: |
+          $file = Join-Path $env:OPENPDF_CI_PRINT_DIR 'printed.pdf'
+          $ready = $false
+          for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            if (Test-Path -LiteralPath $file) {
+              try {
+                $pdf = [IO.File]::ReadAllBytes($file)
+                $tail = [Text.Encoding]::ASCII.GetString($pdf, [Math]::Max(0, $pdf.Length - 64), [Math]::Min(64, $pdf.Length))
+                $ready = $tail.TrimEnd().EndsWith('%%EOF')
+              } catch [IO.IOException] { }
+              if ($ready) { break }
+            }
+            Start-Sleep -Seconds 1
+          }
+          if (!$ready) { throw 'The CI printer did not produce a completed PDF' }
+          node scripts/ci-print-smoke.mjs verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenPDF-print-smoke-output
+          path: ${{ env.OPENPDF_CI_PRINT_DIR }}/printed.pdf
+          if-no-files-found: error
+
   windows-build:
     name: Windows checks and build
     runs-on: windows-latest
@@ -38,6 +101,9 @@ jobs:
         run: npm test
       - name: Build frontend
         run: npm run build
+      - name: Prepare the pinned Windows PDFium runtime
+        shell: pwsh
+        run: ./scripts/prepare-pdfium.ps1
       - name: Test native code
         run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Build standard installers (WebView2 downloaded only if missing)
@@ -51,6 +117,7 @@ jobs:
           Copy-Item src-tauri/target/release/bundle/nsis/*.exe "$out/setup/"
           Copy-Item src-tauri/target/release/bundle/msi/*.msi "$out/setup/"
           Copy-Item src-tauri/target/release/openpdf.exe "$out/portable/OpenPDF/OpenPDF.exe"
+          Copy-Item -Recurse src-tauri/pdfium-runtime "$out/portable/OpenPDF/"
           Copy-Item packaging/portable/* "$out/portable/OpenPDF/"
           Copy-Item LICENSE, THIRD_PARTY_NOTICES.md "$out/portable/OpenPDF/"
           Compress-Archive -Path "$out/portable/OpenPDF" -DestinationPath "$out/OpenPDF_${version}_x64-portable.zip"

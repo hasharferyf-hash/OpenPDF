@@ -33,6 +33,7 @@ Give each Issue one primary owner and a clear file/module boundary. Avoid assign
 Requirements: Node.js LTS, npm, Rust stable with the MSVC toolchain, Microsoft C++ Build Tools, and Microsoft Edge WebView2.
 
     npm install
+    pwsh -File scripts/prepare-pdfium.ps1
     npm run tauri dev
 
 Run checks before opening a PR:

@@ -36,6 +36,9 @@
     "icon": [
       "icons/icon.ico"
     ],
+    "resources": {
+      "pdfium-runtime/": "pdfium-runtime/"
+    },
     "category": "Productivity",
     "shortDescription": "A light, clean PDF viewer",
     "longDescription": "A lightweight, local-first PDF viewer for Windows.",
