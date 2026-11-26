@@ -52,6 +52,8 @@ Use disposable test PDFs: a small text PDF, a multi-page PDF, a large/scanned PD
 - [ ] Add an annotation, save, close, and reopen the PDF; verify the annotation persists.
 - [ ] Cancel Save As; verify the document remains marked as modified.
 - [ ] Print a multi-page PDF and verify page count/order.
+- [ ] On the native-print prototype, press Ctrl+P on a 200-page PDF. Verify the Windows dialog appears before the preparation message. Cancel once and verify no output. Reopen it, choose Microsoft Print to PDF and pages 15 and 190, and verify the output contains only those pages in order.
+- [ ] Repeat with an unsaved Ink, Highlight, and FreeText annotation on the selected pages. Verify the output includes the annotations while the original tab still shows unsaved changes. Check portrait and landscape pages, Current Page, and cancelling the Windows output-file prompt.
 - [ ] Cancel an in-progress print preparation if possible; verify the app remains responsive.
 - [ ] Exit with multiple modified tabs; verify each modified document is handled before shutdown.
 

@@ -52,6 +52,7 @@ coverage/
 
 # Tauri generated artifacts
 src-tauri/gen/schemas/
+src-tauri/pdfium-runtime/
 
 # PDF.js runtime assets copied at build time
 public/pdfjs/

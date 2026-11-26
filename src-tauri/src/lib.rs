@@ -5,6 +5,8 @@ use tauri::{Emitter, Manager, State};
 use tauri::ipc::{InvokeBody, Request, Response};
 
 mod atomic_file;
+#[cfg(windows)]
+mod native_print;
 
 #[derive(Default)]
 struct PendingOpenFiles(Mutex<Vec<String>>);
@@ -200,10 +202,22 @@ pub fn run() {
         }
     }));
 
-    builder
+    let builder = builder
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![read_pdf, write_pdf, startup_files, take_pending_open_files])
+        .plugin(tauri_plugin_opener::init());
+    #[cfg(windows)]
+    let builder = builder.manage(native_print::NativePrintState::default())
+        .invoke_handler(tauri::generate_handler![
+            read_pdf, write_pdf, startup_files, take_pending_open_files,
+            native_print::choose_native_print,
+            native_print::submit_native_print,
+            native_print::cancel_native_print
+        ]);
+    #[cfg(not(windows))]
+    let builder = builder
+        .invoke_handler(tauri::generate_handler![read_pdf, write_pdf, startup_files, take_pending_open_files]);
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running OpenPDF");
 }

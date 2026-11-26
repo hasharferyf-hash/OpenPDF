@@ -16,6 +16,7 @@ import {
   type OpenedFile,
 } from "../services/files/platform";
 import { printDocument } from "../services/pdf/print";
+import { printWithWindows } from "../services/pdf/nativePrint";
 import type { FileOperations } from "../services/files/operations";
 import { OpenCancelled, PasswordCancelled, ViewerController } from "../services/pdf/viewerController";
 import type { DocumentHandle, DocumentStatus } from "../services/tabs";
@@ -43,6 +44,7 @@ type Modal =
   | { kind: "password"; id: number; wrong: boolean; resolve(password: string | null): void }
   | { kind: "confirm"; resolve(discard: boolean): void }
   | { kind: "print"; done: number; abort: AbortController }
+  | { kind: "nativePrint"; abort: AbortController }
   | { kind: "properties" };
 
 const isEditable = (target: EventTarget | null) =>
@@ -210,10 +212,20 @@ export function DocumentView(props: DocumentViewProps) {
   const print = useCallback(() => fileOperations.current.run(async () => {
     const doc = controller?.document;
     if (!doc || latest.current.modal) return;
-    controller.commitEdits();
     const abort = new AbortController();
-    setModal({ kind: "print", done: 0, abort });
     try {
+      // Encrypted PDFs still use the existing PDF.js print path. The prototype
+      // does not retain or forward the password used to unlock the document.
+      if (isDesktop && /\bWindows\b/i.test(navigator.userAgent) && await doc.getPermissions() === null) {
+        await printWithWindows({
+          title: file?.name ?? "OpenPDF",
+          pageCount: doc.numPages,
+          currentPage: controller.getState().page,
+        }, () => controller.getBytes(), abort.signal, () => setModal({ kind: "nativePrint", abort }));
+        return;
+      }
+      controller.commitEdits();
+      setModal({ kind: "print", done: 0, abort });
       // Let the progress dialog close before the system print dialog blocks the page.
       const ready = await printDocument(doc, {
         signal: abort.signal,
@@ -225,10 +237,14 @@ export function DocumentView(props: DocumentViewProps) {
         ready();
       }
     } catch (error) {
-      console.error(error);
-      showError(t("print"), t("errorPrint"));
+      if (!abort.signal.aborted) {
+        console.error(error);
+        showError(t("print"), t("errorPrint"));
+      }
+    } finally {
+      setModal((current) => (current?.kind === "print" || current?.kind === "nativePrint" ? null : current));
     }
-  }), [controller, showError, t]);
+  }), [controller, file, showError, t]);
 
   const setPresenting = useCallback(
     (enabled: boolean) => {
@@ -472,6 +488,9 @@ export function DocumentView(props: DocumentViewProps) {
               setModal(null);
             }}
           />
+        )}
+        {modal?.kind === "nativePrint" && (
+          <ProgressDialog message={t("printingSelectedPages")} onCancel={() => modal.abort.abort()} />
         )}
         {modal?.kind === "properties" && controller && file && (
           <PropertiesDialog controller={controller} fileName={file.name} filePath={file.path} onClose={() => setModal(null)} />

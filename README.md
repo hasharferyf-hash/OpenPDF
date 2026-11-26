@@ -69,6 +69,7 @@ Install Node.js 22, Rust stable with the MSVC toolchain, Microsoft C++ Build Too
 
 ```sh
 npm install
+pwsh -File scripts/prepare-pdfium.ps1
 npm run tauri dev
 ```
 
