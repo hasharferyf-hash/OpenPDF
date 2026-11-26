@@ -12,7 +12,7 @@ use std::{
 };
 
 use tauri::{
-    async_runtime::{channel, spawn_blocking, Sender},
+    async_runtime::{channel, Sender},
     ipc::{InvokeBody, Request},
     Manager, State, WebviewWindow,
 };
@@ -89,7 +89,7 @@ pub async fn choose_native_print(
         *active = Some(ActiveJob { id, input: Some(send_pdf), cancelled: Arc::clone(&cancelled) });
     }
     let lease = JobLease(Arc::clone(&state.active));
-    spawn_blocking(move || {
+    std::thread::Builder::new().name("openpdf-print".into()).spawn(move || {
         // Keep the owner alive, and initialize COM on the thread showing the dialog.
         let _owner_window = window;
         let printer = Apartment::enter().and_then(|com| {
@@ -118,7 +118,7 @@ pub async fn choose_native_print(
                 let _ = dialog_result.blocking_send(Err(error));
             }
         }
-    });
+    }).map_err(|error| format!("Could not start the Windows print worker: {error}"))?;
     selection.recv().await.ok_or_else(|| "Print dialog closed unexpectedly".to_string())?
 }
 
@@ -292,13 +292,16 @@ impl Printer {
                 return Ok(());
             }
             let page = pdf.page((page_number - 1) as i32)?;
+            // Flatten printable annotations and form appearances in the private
+            // print document. The source file and viewer's dirty state stay intact.
+            if unsafe { (api.flatten_page)(page.handle, FLAT_PRINT) } == FLATTEN_FAIL {
+                return Err(format!("PDFium could not flatten page {page_number} for printing"));
+            }
             let [x, y, width, height, rotation] = fit_page(page.size(), device)?;
             if unsafe { StartPage(dc) } <= 0 {
                 return Err(win_error("Could not start a print page"));
             }
-            // PDFium receives the real printer DC. FPDF_ANNOT | FPDF_PRINTING
-            // preserves printable annotation appearances from the PDF snapshot.
-            if unsafe { (api.render_page)(dc, page.handle, x, y, width, height, rotation, 0x801) } == 0 {
+            if unsafe { (api.render_page)(dc, page.handle, x, y, width, height, rotation, FPDF_PRINTING) } == 0 {
                 return Err(format!("PDFium could not render page {page_number}"));
             }
             if unsafe { EndPage(dc) } <= 0 {
@@ -347,6 +350,11 @@ impl Drop for Module {
 
 type PdfHandle = *mut c_void;
 type Close = unsafe extern "system" fn(PdfHandle);
+// Values from the pinned PDFium build's fpdf_flatten.h and fpdfview.h.
+const FLAT_PRINT: i32 = 1;
+const FLATTEN_FAIL: i32 = 0;
+const FPDF_PRINTING: i32 = 0x800;
+
 struct Pdfium {
     _module: Module,
     destroy: unsafe extern "system" fn(),
@@ -357,6 +365,7 @@ struct Pdfium {
     close_page: Close,
     page_width: unsafe extern "system" fn(PdfHandle) -> f32,
     page_height: unsafe extern "system" fn(PdfHandle) -> f32,
+    flatten_page: unsafe extern "system" fn(PdfHandle, i32) -> i32,
     render_page: unsafe extern "system" fn(HDC, PdfHandle, i32, i32, i32, i32, i32, i32) -> i32,
 }
 
@@ -391,6 +400,7 @@ impl Pdfium {
             close_page: symbol!("FPDF_ClosePage"),
             page_width: symbol!("FPDF_GetPageWidthF"),
             page_height: symbol!("FPDF_GetPageHeightF"),
+            flatten_page: symbol!("FPDFPage_Flatten"),
             render_page: symbol!("FPDF_RenderPage"),
         };
         unsafe { init() };
